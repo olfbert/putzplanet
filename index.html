@@ -173,7 +173,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 #radioFace svg{width:100%;height:100%;display:block}
 .rname{font-size:10px;letter-spacing:1px;color:#ff8a7a}
 #radioTxt{font-size:13px;line-height:1.3}
-#radioTxt span,#storyTxt span{opacity:0;animation:wIn .25s ease-out forwards;display:inline-block}
+#radioTxt span{opacity:0;animation:wIn .25s ease-out forwards;display:inline-block}
 @keyframes wIn{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
 #introCap{position:fixed;left:0;right:0;top:calc(var(--st) + 9vh);z-index:39;text-align:center;pointer-events:auto}
 #introCap.cin{animation:cin 1s ease-out}
@@ -188,11 +188,20 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 #storyArt svg{width:100%;height:auto;display:block}
 #storyArt.pop{animation:pop .45s ease-out}
 @keyframes pop{from{transform:scale(.94) rotate(-1deg);opacity:.3}to{transform:none;opacity:1}}
-#storyTxt{font-size:16px;line-height:1.45;margin-top:12px;min-height:4.4em}
+#storyTxt{font-size:15px;line-height:1.35;margin-top:10px;min-height:7.6em;display:flex;flex-direction:column;gap:6px}
+.sl{opacity:0;animation:wIn .3s ease-out forwards}
+#storyTxt.all .sl{animation-delay:0s!important}
+.sl.box{align-self:flex-start;background:#ffd23f;color:#14202b;font-size:12px;padding:3px 10px;border-radius:4px;transform:rotate(-1deg);font-style:italic}
+.sl.say{display:flex;flex-direction:column;max-width:88%;background:#fff;color:#14202b;border-radius:14px;padding:6px 11px;border:2px solid #14202b;position:relative}
+.sl.say b{font-size:10px;letter-spacing:.5px;text-transform:uppercase}
+.sl.say.du{align-self:flex-end;background:#e6fbf6;border-bottom-right-radius:3px}.sl.say.du b{color:#1f8a7a}
+.sl.say.chef{align-self:flex-start;background:#fff0ee;border-bottom-left-radius:3px}.sl.say.chef b{color:#d62828}
+.sl.say.laut{align-self:center;background:#e8edf3;font-family:ui-monospace,Menlo,monospace;font-size:13px}.sl.say.laut b{color:#55606e}
+.sl.sfx{align-self:center;font-size:30px;color:#ffd23f;text-shadow:3px 3px 0 #e63946,-1px -1px 0 #14202b;transform:rotate(-6deg)}
 #storyDots{display:flex;gap:6px}
 #storyDots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.25)}
 #storyDots i.on{background:#ffd23f}
-@media (max-height:520px){ #storyTxt{font-size:14px;min-height:0} .sbox{max-width:560px;display:grid;grid-template-columns:1.1fr 1fr;gap:12px;align-items:center} #storyTxt{margin-top:0} .sbox .row{grid-column:1/3} }
+@media (max-height:520px){ #storyTxt{font-size:12.5px;min-height:0;gap:4px} .sl.say{padding:4px 9px} .sl.sfx{font-size:24px} .sbox{max-width:560px;display:grid;grid-template-columns:1.1fr 1fr;gap:12px;align-items:center} #storyTxt{margin-top:0} .sbox .row{grid-column:1/3} }
 .flycoin{position:fixed;width:26px;height:26px;margin:-13px 0 0 -13px;z-index:26;transition:transform .75s cubic-bezier(.5,-0.3,.7,1),opacity .75s;pointer-events:none}
 .flycoin svg{width:100%;height:100%}
 .pickpop{position:fixed;left:50%;top:calc(50% - 46px);transform:translateX(-50%);font-family:'Lilita One';font-size:18px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.5);animation:pp .9s ease-out forwards;pointer-events:none;white-space:nowrap}
@@ -1202,8 +1211,9 @@ const UPG = {
   rrange: { list: RRANGE, icon: '📡', name: 'Roomba-Funk', fx: (v) => (v >= 500 ? 'ganzer Planet' : `${v} m um Schredder`), needR: true },
 };
 const ROOMBA_MAX = 40, SHRED_MAX = 12;
-const roombaCost = (n) => Math.round(60 * Math.pow(1.27, n));
-const shredCost = (n) => Math.round(450 * Math.pow(2.05, n));
+// Preise so gewählt, dass man alles kaufen kann, wenn ungefähr 75 % geschafft sind (siehe Simulation)
+const roombaCost = (n) => Math.round(60 * Math.pow(1.19, n));
+const shredCost = (n) => Math.round(1300 * Math.pow(1.5, n));
 const PCOLORS = [0xff6b6b, 0x5ab4ff, 0x7bd389, 0xffd23f, 0xc77dff, 0xff9f1c, 0x2ec4b6, 0xf15bb5];
 
 const G = {
@@ -1829,6 +1839,8 @@ function sfx(k) {
     case 'thud': noiseHit(0.12, 0.25, 300); break;
     case 'error': tone(160, 0.2, 'square', 0.1, -40); break;
     case 'page': tone(660, 0.06, 'triangle', 0.08, 120); break;
+    case 'chirp': { const b = 2400 + Math.random() * 1400; for (let k = 0; k < 2 + ((Math.random() * 3) | 0); k++) tone(b + Math.random() * 500, 0.07, 'sine', 0.05, 900, k * 0.11); break; }
+    case 'flap': noiseHit(0.25, 0.08, 1400, 'bandpass'); break;
     case 'magnet': tone(120, 1.1, 'sawtooth', 0.12, 900); tone(240, 1.1, 'sine', 0.1, 1500); noiseHit(1.2, 0.25, 800, 'bandpass'); break;
     case 'combo': [659, 880, 1175].forEach((f, i) => tone(f, 0.12, 'square', 0.07, 0, i * 0.05)); break;
     case 'engine': tone(70, 0.6, 'sawtooth', 0.12, 40); noiseHit(0.5, 0.15, 400); break;
@@ -1851,7 +1863,7 @@ function onCellChanged(c) {
     G.st.cells++;
     const p = new THREE.Vector3(cellDir[c * 3], cellDir[c * 3 + 1], cellDir[c * 3 + 2]); surf(p, 0.3);
     const near = p.distanceTo(PL.pos) < 40;
-    if (near) { spawnBurst(p, 14, new THREE.Color(0x9cff7a), 2.2); }
+    if (near) { spawnBurst(p, 14, new THREE.Color(0x9cff7a), 2.2); faunaCellCleaned(c, p); }
     if (NET.mode !== 'guest') { const bonus = (2 + Math.floor(W.cellInit[c] / 2)) * TURBO[G.upg.turbo].v; addCoins(bonus); if (near) { floatCoins('+' + fmt(bonus) + ' 🌱'); sfx('clean'); } }
   }
 }
@@ -1952,6 +1964,10 @@ function updateDeposit(dt) {
 }
 
 // ---------------- Shop ----------------
+function shopAllBought() {
+  for (const k of Object.keys(UPG)) if (UPG[k].list[G.upg[k] + 1]) return false;
+  return G.roombaCount >= ROOMBA_MAX && G.shredders.length - 1 >= SHRED_MAX && G.veh.owned && G.veh.auto && !VSPEED[G.veh.spd + 1];
+}
 function costOf(k) {
   if (k === 'veh') return G.veh.owned ? null : VEH_COST;
   if (k === 'vauto') return !G.veh.owned || G.veh.auto ? null : VAUTO_COST;
@@ -2538,7 +2554,7 @@ function leaveToTitle() {
   else if (NET.mode === 'host') stopHosting();
   if (VEH.driving) { VEH.driving = false; VEH.driver = -1; }
   G.running = false; closePanel(); $('#hud').classList.add('hidden'); $('#title').classList.remove('hidden'); updateMpBadge(); renderTitle();
-  VIEW.mode = 'title'; rebuildOrbitData(); $('#radio').classList.add('hidden'); radioQ.length = 0;
+  VIEW.mode = 'title'; rebuildOrbitData(); FA.rabbits.length = FA.birds.length = FA.flies.length = 0; renderFauna(); $('#radio').classList.add('hidden'); radioQ.length = 0;
 }
 
 // Netzwerk-Takt unabhängig vom Rendern
@@ -2564,6 +2580,7 @@ function frame(now) {
   else if (VIEW.mode === 'intro') updateIntro(dt);
   if (G.running && play) updateTarget(); else hl.visible = false;
   updateParticles(dt); updateShredders(dt); renderRoombas(); updateVehicleVisual(dt);
+  if (G.running && play) updateFauna(dt);
   trashT -= dt; natureT -= dt;
   if (trashT <= 0 && (trashDirty || lastTrashPos.distanceToSquared(PL.pos) > 2.25)) { rebuildTrash(); trashT = 0.07; }
   if (natureT <= 0 && (natureDirty || lastNatPos.distanceToSquared(PL.pos) > 9)) { rebuildNature(); natureT = 0.2; }
@@ -2601,7 +2618,7 @@ async function boot() {
     decorateHud(); loadTip(); const tipI = setInterval(loadTip, 1600);
     $('#loadTxt').textContent = 'Lade Modelle …'; await loadAssets(); await sleep(10);
     $('#loadTxt').textContent = 'Baue Müll …'; buildTypes(); await sleep(10);
-    buildGroundMeshes(); initRenderGroups(); initRoombaMeshes(); initParticles(); initMinimap(); initOrbit();
+    buildGroundMeshes(); initRenderGroups(); initRoombaMeshes(); initParticles(); initMinimap(); initOrbit(); initFauna();
     await storeInit();
     $('#loadTxt').textContent = 'Erschaffe Planet …'; await sleep(10);
     let seed = 20261112; try { const s1 = await storeGet('slot1'); if (s1) seed = s1.seed; } catch (e) { }
@@ -2610,7 +2627,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -2666,7 +2683,7 @@ const STORY = [
       <path d="M140 136h40l-7 24h-26z" fill="#8d99ae"/><path d="M150 166l-6 14M160 168v16M170 166l6 14" stroke="#ffd23f" stroke-width="2" stroke-dasharray="3 4"/></g>
       <text x="160" y="77" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="13" fill="#fff">MÜLLEXPRESS</text>
       <g transform="translate(160 112) scale(.55)"><circle cx="0" cy="0" r="13" fill="#ffd7b5" stroke="${OUT}" stroke-width="3"/><path d="M-13 -4 a13 11 0 0 1 26 0 z" fill="#f08a4b" stroke="${OUT}" stroke-width="3"/><circle cx="-4.5" cy="2" r="2" fill="${OUT}"/><circle cx="4.5" cy="2" r="2" fill="${OUT}"/></g>`),
-    t: 'Orbitaldepot 7 der MüllExpress Intergalaktisch GmbH. Hier landet der Abfall von 14 Galaxien. Und heute: du. Erster Tag als Praktikant.' },
+    lines: [['box', 'Müllstation Orbit 7, Montagmorgen'], ['chef', 'Praktikant, du übernimmst heute Schleuse 3. Aber erst Kaffee holen. Schwarz, vier Stück Zucker.'], ['du', 'Geht klar, Chef!']] },
   { svg: SVGW(`<rect x="0" y="120" width="320" height="80" fill="#3a4766"/><g stroke="${OUT}" stroke-width="3" stroke-linejoin="round">
       <rect x="70" y="112" width="180" height="56" rx="10" fill="#8d99ae"/>
       <ellipse cx="160" cy="118" rx="38" ry="10" fill="#7a1018"/><path d="M122 118a38 30 0 0 1 76 0z" fill="#e63946"/><path d="M136 100a20 12 0 0 1 22-6" fill="none" stroke="#ff9aa2" stroke-width="4"/>
@@ -2676,7 +2693,7 @@ const STORY = [
       <path d="M248 214 l-40 -86 q-4 -10 6 -12 q8 -2 12 6 l22 46" fill="#ffd7b5"/></g>
       <text x="160" y="156" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="11" fill="#e63946">BITTE NICHT DRÜCKEN</text>
       <path d="M256 36c2-4 0-6 2-9M264 36c2-4 0-6 2-9" stroke="#fff" stroke-width="2" fill="none"/>`, '#26314f'),
-    t: 'Du suchst die Kaffeemaschine. Du findest einen großen roten Knopf. Darauf steht: „BITTE NICHT DRÜCKEN“. Du drückst ihn. Natürlich.' },
+    lines: [['du', 'Kaffeemaschine, Kaffeemaschine … das hier sieht doch aus wie eine.'], ['du', 'Steht zwar „Bitte nicht drücken“ drauf, aber das kleben die hier auf alles.'], ['sfx', 'KLICK']] },
   { svg: SVGW(`${ST_STARS}<g stroke="${OUT}" stroke-width="3" stroke-linejoin="round">
       <circle cx="160" cy="250" r="140" fill="#6cbf4a"/><path d="M60 180c20-8 40 6 60-2s30-14 52-4" fill="none" stroke="#4f9a35" stroke-width="3"/>
       <ellipse cx="110" cy="170" rx="24" ry="9" fill="#3aa0d8"/><ellipse cx="215" cy="160" rx="18" ry="7" fill="#3aa0d8"/>
@@ -2690,7 +2707,7 @@ const STORY = [
       <path d="M232 22v8M196 50v12M120 60v12M270 66v10M84 100v8M250 110v10" stroke="#fff" stroke-width="2" opacity=".7"/>
       <text x="100" y="36" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="13" fill="#14202b">BLÜHONIA</text>
       <text x="100" y="58" text-anchor="middle" font-family="Nunito, sans-serif" font-weight="800" font-size="10" fill="#ffd23f">Eröffnung: morgen!</text>`),
-    t: 'Die Müllschleuse öffnet sich. 100.000 Teile – Dosen, Sofas, Bananenschalen – regnen auf Blühonia, den schönsten Ferienplaneten der Galaxis. Eröffnung war morgen.' },
+    lines: [['laut', 'Schleuse 3 geöffnet. Ladung: 100.000 Teile. Ziel: Blühonia.'], ['du', 'Blühonia? Ist das nicht der Ferienplanet, der morgen aufmacht?']] },
   { svg: SVGW(`<g stroke="${OUT}" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
       <path d="M78 200v-30c0-22 26-34 52-34s52 12 52 34v30z" fill="#3d3d55"/><path d="M118 140l12 26 12-26" fill="#fff"/><path d="M127 148l3 30 3-30z" fill="#e63946"/>
       <ellipse cx="130" cy="92" rx="44" ry="50" fill="#ff8a7a"/><path d="M96 70l20 9M164 70l-20 9" stroke-width="5"/>
@@ -2701,7 +2718,7 @@ const STORY = [
       <text x="246" y="54" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="15" fill="#e63946">DU RÄUMST</text>
       <text x="246" y="74" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="15" fill="#e63946">DAS AUF!!</text>
       <text x="130" y="194" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="12" fill="#ffd23f">CHEF DRECKMANN</text>`, '#2b1f3a'),
-    t: 'Chef Dreckmann ist … nicht begeistert. „DU räumst das auf! Jedes. Einzelne. Teil. Mit deinen eigenen Händen!“' },
+    lines: [['chef', 'Morgen landen da 4.000 Urlauber! Die haben Strand gebucht, keinen Sperrmüll!'], ['du', 'Ich könnte vielleicht schnell …'], ['chef', 'Du räumst das auf. Jedes Teil einzeln, mit deinen eigenen Händen.']] },
   { svg: SVGW(`${ST_STARS}<rect x="0" y="150" width="320" height="50" fill="#6cbf4a"/><g stroke="${OUT}" stroke-width="3" stroke-linejoin="round">
       <rect x="44" y="104" width="100" height="56" rx="6" fill="#3d6a8a"/><rect x="40" y="96" width="108" height="12" fill="#f4c430"/><path d="M38 96l14-30h84l14 30z" fill="#f08a4b"/>
       <rect x="126" y="48" width="10" height="40" fill="#9aa3ab"/><circle cx="62" cy="128" r="5" fill="#8b4513"/><circle cx="118" cy="140" r="4" fill="#8b4513"/>
@@ -2710,7 +2727,7 @@ const STORY = [
       <path d="M172 84c-12 6-26 8-40 8" stroke="#ffd23f" stroke-width="3" stroke-dasharray="4 5" fill="none"/>
       <text x="94" y="137" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="11" fill="#fff">SCHREDDI</text>
       <text x="94" y="151" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="11" fill="#ffd23f">3000</text>`),
-    t: 'Er lässt dir Schreddi 3000 da – einen rostigen Schredder, der pro Teil genau eine Münze ausspuckt. Dann fliegt er davon. Mit dem Raumschiff. Und dem Kaffee.' },
+    lines: [['chef', 'Das ist Schreddi 3000. Für jedes Teil spuckt er eine Münze aus. Davon kaufst du dir Werkzeug.'], ['du', 'Und mein Kaffee?'], ['chef', 'Hab ich mir selbst geholt. Tschüss!']] },
   { svg: SVGW(`${ST_STARS}<g stroke="${OUT}" stroke-width="3" stroke-linejoin="round">
       <circle cx="160" cy="330" r="200" fill="#6cbf4a"/>
       <path d="M40 150l14-12 10 8 12-14 16 16z" fill="#8d6e63"/><path d="M220 140l18-16 14 10 10-8 22 20z" fill="#8d6e63"/>
@@ -2718,20 +2735,32 @@ const STORY = [
       <path d="M262 74v60" stroke-width="4" stroke="#a0703c"/><rect x="214" y="56" width="98" height="28" rx="4" fill="#fff"/></g>
       <text x="263" y="75" text-anchor="middle" font-family="Lilita One, sans-serif" font-size="12" fill="#14202b">VIEL GLÜCK!</text>
       ${KID(150, 92, 1.05, true)}`),
-    t: 'Also los, arme Seele. Der Planet ist klein. Der Müllberg nicht. Vielleicht springen ja ein paar Upgrades raus …', last: true },
+    lines: [['du', 'Okay. 100.000 Teile.'], ['du', 'Ich fang mal mit der Bananenschale da vorne an.']], last: true },
 ];
+const SPK = { du: ['Du', 'du'], chef: ['Dreckmann', 'chef'], laut: ['Durchsage', 'laut'] };
 function showStory(done) {
-  const el = $('#story'); let i = 0; el.classList.remove('hidden');
+  const el = $('#story'); let i = 0, shownAt = 0; el.classList.remove('hidden');
   const render = () => {
     const s = STORY[i];
-    const words = s.t.split(' ').map((w, k) => `<span style="animation-delay:${(k * 0.045).toFixed(2)}s">${w}</span>`).join(' ');
-    $('#storyArt').innerHTML = s.svg; $('#storyTxt').innerHTML = words; $('#storyDots').innerHTML = STORY.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
+    $('#storyTxt').classList.remove('all');
+    $('#storyTxt').innerHTML = s.lines.map(([who, txt], k) => {
+      const d = `style="animation-delay:${(0.25 + k * 0.85).toFixed(2)}s"`;
+      if (who === 'box') return `<div class="sl box" ${d}>${txt}</div>`;
+      if (who === 'sfx') return `<div class="sl sfx lil" ${d}>${txt}!</div>`;
+      return `<div class="sl say ${SPK[who][1]}" ${d}><b>${SPK[who][0]}</b><span>${txt}</span></div>`;
+    }).join('');
+    shownAt = performance.now() + (0.25 + (s.lines.length - 1) * 0.85) * 1000;
+    $('#storyArt').innerHTML = s.svg; $('#storyDots').innerHTML = STORY.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('');
     $('#storyNext').textContent = s.last ? 'Ab an die Arbeit! 🧹' : 'Weiter ▸';
     $('#storyArt').classList.remove('pop'); void $('#storyArt').offsetWidth; $('#storyArt').classList.add('pop');
     sfx('page');
   };
   const finish = () => { el.classList.add('hidden'); $('#storyNext').onclick = $('#storySkip').onclick = null; done && done(); };
-  $('#storyNext').onclick = () => { auInit(); if (i < STORY.length - 1) { i++; render(); } else finish(); };
+  $('#storyNext').onclick = () => {
+    auInit();
+    if (performance.now() < shownAt) { $('#storyTxt').classList.add('all'); shownAt = 0; return; } // erst alles zeigen
+    if (i < STORY.length - 1) { i++; render(); } else finish();
+  };
   $('#storySkip').onclick = finish;
   render();
 }
@@ -2759,6 +2788,7 @@ const RADIO = {
   vauto: 'Ein Schredder IN der Kehrmaschine? Ich hätte dich früher befördern sollen. Mach ich aber nicht.',
   combo: 'Combo ×3! Ich hab gehört, du hast einen Lauf. Lauf weiter!',
   basket: 'Ein Korb ohne Boden? Physik ist offenbar nur ein Vorschlag. Na dann – rein mit allem!',
+  life: 'Moment, war das gerade ein Hase? Auf meinem Ferienplaneten? Na gut, der darf bleiben. Die Urlauber mögen so was.',
   cheat: 'Cheats?! Ich hab nichts gesehen. Und du auch nicht.',
   friend: 'Du hast Freunde mitgebracht? Prima. Die bezahle ich aber nicht.',
 };
@@ -2814,6 +2844,8 @@ const ACH = [
   { id: 'vauto', ic: '♻️', n: 'Rollendes Kraftwerk', d: 'Baue den Bordschredder ein', v: () => (G.veh.auto ? 1 : 0), max: 1, r: 0 },
   { id: 'combo3', ic: '🔥', n: 'Im Flow', d: 'Erreiche eine Combo von ×3', v: () => G.st.combo || 1, max: 3, r: 300 },
   { id: 'combo5', ic: '☄️', n: 'Putz-Ekstase', d: 'Erreiche eine Combo von ×5', v: () => G.st.combo || 1, max: 5, r: 2000 },
+  { id: 'allbought', ic: '🛍️', n: 'Komplett ausgestattet', d: 'Kaufe alles, was der Shop hergibt', v: () => (shopAllBought() ? 1 : 0), max: 1, r: 0 },
+  { id: 'life', ic: '🐇', n: 'Frühlingserwachen', d: '100 Tiere sind auf den Planeten zurückgekehrt', v: () => G.st.animals || 0, max: 100, r: 500 },
   { id: 'basket', ic: '🧺', n: 'Bodenlos', d: 'Kaufe den Bodenlosen Korb', v: () => (G.upg.cap >= CAP.length - 1 ? 1 : 0), max: 1, r: 0 },
   { id: 'friends', ic: '🤝', n: 'Geteiltes Leid', d: 'Putze zusammen mit Freunden', v: () => G.st.friends, max: 1, r: 100 },
 ];
@@ -3179,6 +3211,210 @@ function vehicleCamera(dt) {
   camera.position.copy(VEH.camP);
   if (VIEW.shake > 0) { VIEW.shake -= dt; const a = VIEW.shake * 0.15; camera.position.x += (Math.random() - 0.5) * a; camera.position.y += (Math.random() - 0.5) * a; }
   camera.up.copy(n); camera.lookAt(_v2.copy(VEH.p).addScaledVector(n, 1.3).addScaledVector(back, 2.8)); camera.updateMatrixWorld();
+}
+
+
+// =====================================================================
+//  PUTZPLANET – Teil 6: Tiere kehren zurück (Hasen, Vögel, Schmetterlinge)
+// =====================================================================
+const FA = { seed: null, rabbits: [], birds: [], flies: [], t: 0, chirpT: 3, ig: {}, cand: [] };
+const FA_MAX = { rabbits: 14, birds: 16, flies: 22 };
+const FA_RANGE = 46;
+function writeBasis(a, o, p, X, Y, Z, s) {
+  a[o] = X.x * s; a[o + 1] = X.y * s; a[o + 2] = X.z * s; a[o + 3] = 0;
+  a[o + 4] = Y.x * s; a[o + 5] = Y.y * s; a[o + 6] = Y.z * s; a[o + 7] = 0;
+  a[o + 8] = Z.x * s; a[o + 9] = Z.y * s; a[o + 10] = Z.z * s; a[o + 11] = 0;
+  a[o + 12] = p.x; a[o + 13] = p.y; a[o + 14] = p.z; a[o + 15] = 1;
+}
+function addBasis(ig, p, X, Y, Z, s, col) {
+  if (ig.n >= ig.cap) { ig.over = true; return; }
+  const k = ig.n++; writeBasis(ig.im.array, k * 16, p, X, Y, Z, s);
+  if (ig.color) { ig.ic.array[k * 3] = col.r; ig.ic.array[k * 3 + 1] = col.g; ig.ic.array[k * 3 + 2] = col.b; }
+}
+function initFauna() {
+  const W_ = 0xffffff, BLK = 0x1b1b1b, PNK = 0xf4a6b5, ORG = 0xf08a24;
+  const rabbit = M([
+    P(Sp(0.15, 10, 8), W_, ['s', 0.8, 0.75, 1.15], ['t', 0, 0.12, -0.02]),
+    P(Sp(0.085, 10, 8), W_, ['t', 0, 0.22, 0.14]),
+    P(Bx(0.035, 0.15, 0.05), W_, ['t', 0, 0.07, 0], ['rx', -0.25], ['rz', 0.18], ['t', 0.035, 0.27, 0.12]),
+    P(Bx(0.035, 0.15, 0.05), W_, ['t', 0, 0.07, 0], ['rx', -0.25], ['rz', -0.18], ['t', -0.035, 0.27, 0.12]),
+    P(Bx(0.02, 0.11, 0.02), PNK, ['t', 0, 0.06, 0.012], ['rx', -0.25], ['rz', 0.18], ['t', 0.035, 0.27, 0.12]),
+    P(Bx(0.02, 0.11, 0.02), PNK, ['t', 0, 0.06, 0.012], ['rx', -0.25], ['rz', -0.18], ['t', -0.035, 0.27, 0.12]),
+    P(Sp(0.05, 6, 4), 0xf7f7f7, ['t', 0, 0.14, -0.2]),
+    P(Sp(0.016, 5, 4), BLK, ['t', 0.05, 0.25, 0.2]), P(Sp(0.016, 5, 4), BLK, ['t', -0.05, 0.25, 0.2]),
+    P(Sp(0.015, 5, 4), PNK, ['t', 0, 0.21, 0.225]),
+    P(Sp(0.05, 6, 4), W_, ['s', 0.8, 0.6, 1.5], ['t', 0.08, 0.04, -0.06]), P(Sp(0.05, 6, 4), W_, ['s', 0.8, 0.6, 1.5], ['t', -0.08, 0.04, -0.06]),
+  ]);
+  const birdBody = M([
+    P(Sp(0.07, 8, 6), W_, ['s', 0.85, 0.8, 1.5], ['t', 0, 0, 0]),
+    P(Sp(0.05, 8, 6), W_, ['t', 0, 0.045, 0.1]),
+    P(new THREE.ConeGeometry(0.018, 0.06, 5), ORG, ['rx', Math.PI / 2], ['t', 0, 0.04, 0.165]),
+    P(Bx(0.07, 0.012, 0.09), W_, ['rx', 0.25], ['t', 0, 0.01, -0.13]),
+    P(Sp(0.009, 4, 3), BLK, ['t', 0.03, 0.06, 0.13]), P(Sp(0.009, 4, 3), BLK, ['t', -0.03, 0.06, 0.13]),
+  ]);
+  const wingR = P(Bx(0.2, 0.012, 0.09), W_, ['t', 0.1, 0.01, 0]), wingL = P(Bx(0.2, 0.012, 0.09), W_, ['t', -0.1, 0.01, 0]);
+  const flyBody = P(Cy(0.008, 0.006, 0.07, 5), 0x2a2a2a, ['rx', Math.PI / 2]);
+  const fwR = new THREE.CircleGeometry(0.045, 7); fwR.rotateX(-Math.PI / 2); fwR.scale(1, 1, 1.25); fwR.translate(0.045, 0, 0.005);
+  const fwL = new THREE.CircleGeometry(0.045, 7); fwL.rotateX(-Math.PI / 2); fwL.scale(1, 1, 1.25); fwL.translate(-0.045, 0, 0.005);
+  const wingMat = lamb(0xffffff, { side: THREE.DoubleSide });
+  FA.ig.rabbit = new IG([{ geo: rabbit, mat: trashMat }], 24, true);
+  FA.ig.bird = new IG([{ geo: birdBody, mat: trashMat }], 24, true);
+  FA.ig.wingR = new IG([{ geo: wingR, mat: trashMat }], 24, true);
+  FA.ig.wingL = new IG([{ geo: wingL, mat: trashMat }], 24, true);
+  FA.ig.fly = new IG([{ geo: flyBody, mat: trashMat }], 30, false);
+  FA.ig.fwR = new IG([{ geo: fwR, mat: wingMat }], 30, true);
+  FA.ig.fwL = new IG([{ geo: fwL, mat: wingMat }], 30, true);
+}
+const RABBIT_COLS = [0x9c6b43, 0xb08257, 0x8a8a8a, 0xf2efe8, 0xc9a77c, 0x6e5440].map((c) => new THREE.Color(c));
+const BIRD_COLS = [0x3b82f6, 0xe63946, 0xf4c430, 0x8b5a2b, 0x2a9d8f, 0x222831, 0xf28c28].map((c) => new THREE.Color(c));
+const FLY_COLS = [0xff9f1c, 0x5ab4ff, 0xffe066, 0xffffff, 0xff6fb5, 0xb388ff].map((c) => new THREE.Color(c));
+const pick = (a) => a[(Math.random() * a.length) | 0];
+const isCleaned = (c) => W.cellLeft[c] === 0 && W.cellInit[c] > 0;
+const _fa = new THREE.Vector3(), _fb = new THREE.Vector3(), _fc = new THREE.Vector3(), _fX = new THREE.Vector3(), _fY = new THREE.Vector3(), _fZ = new THREE.Vector3();
+function randPointInCell(c, out) {
+  for (let tr = 0; tr < 6; tr++) {
+    out.set(cellDir[c * 3], cellDir[c * 3 + 1], cellDir[c * 3 + 2]); const t1 = tangentOf(out), t2 = _fc.crossVectors(out, t1);
+    out.addScaledVector(t1, (Math.random() - 0.5) * 4.5 / R).addScaledVector(t2, (Math.random() - 0.5) * 4.5 / R).normalize();
+    if (groundH(out.x, out.y, out.z) > WATER + 0.4 && !inAnyRock(out)) { out.multiplyScalar(R); surf(out); return true; }
+  }
+  return false;
+}
+function inAnyRock(dir) {
+  const list = W.obs.get(dirToCell(dir.x, dir.y, dir.z)); if (!list) return false;
+  const x = dir.x * R, y = dir.y * R, z = dir.z * R;
+  for (const o of list) { if (o[4]) { const e = rockEdge(o[4], x, y, z); if (e.d < e.edge + 0.3) return true; } else { const dx = x - o[0], dy = y - o[1], dz = z - o[2]; if (dx * dx + dy * dy + dz * dz < (o[3] + 0.3) ** 2) return true; } }
+  return false;
+}
+function spawnRabbit(p) { FA.rabbits.push({ p: p.clone(), f: tangentOf(p.clone().normalize()).applyAxisAngle(p.clone().normalize(), Math.random() * TAU), st: 'sit', t: 1 + Math.random() * 3, hop: 0, col: pick(RABBIT_COLS), s: 1.2 + Math.random() * 0.4, ear: Math.random() * TAU }); G.st.animals = (G.st.animals || 0) + 1; }
+function spawnBird(p, ground) {
+  const n = p.clone().normalize();
+  FA.birds.push({ p: p.clone(), f: tangentOf(n).applyAxisAngle(n, Math.random() * TAU), st: ground ? 'ground' : 'fly', alt: ground ? 0 : 6 + Math.random() * 6, t: 2 + Math.random() * 5, turn: (Math.random() < 0.5 ? -1 : 1) * (0.4 + Math.random() * 0.5), flap: Math.random() * TAU, col: pick(BIRD_COLS), s: 1.2 + Math.random() * 0.5, tgt: null });
+  G.st.animals = (G.st.animals || 0) + 1;
+}
+function spawnFly(p) { FA.flies.push({ home: p.clone(), p: p.clone().addScaledVector(p.clone().normalize(), 0.6), f: tangentOf(p.clone().normalize()), flap: Math.random() * TAU, col: pick(FLY_COLS), ph: Math.random() * 100, s: 0.9 + Math.random() * 0.5 }); G.st.animals = (G.st.animals || 0) + 1; }
+// Wird aufgerufen, wenn eine Fläche gerade komplett sauber geworden ist
+function faunaCellCleaned(c, p) {
+  if (!FA.ig.rabbit || p.distanceTo(PL.pos) > 40) return;
+  const q = new THREE.Vector3();
+  if (Math.random() < 0.55 && FA.flies.length < FA_MAX.flies && randPointInCell(c, q)) { spawnFly(q); if (Math.random() < 0.5 && randPointInCell(c, q)) spawnFly(q); }
+  if (Math.random() < 0.35 && FA.rabbits.length < FA_MAX.rabbits && randPointInCell(c, q) && q.distanceTo(PL.pos) > 5) spawnRabbit(q);
+  if (Math.random() < 0.25 && FA.birds.length < FA_MAX.birds && randPointInCell(c, q)) spawnBird(q.addScaledVector(q.clone().normalize(), 9), false);
+  if (!G.radio.includes('life') && G.st.cells > 3) radio('life');
+}
+function faunaManage() {
+  if (FA.seed !== W.seed) { FA.seed = W.seed; FA.rabbits.length = FA.birds.length = FA.flies.length = 0; }
+  const P = PL.pos, far2 = (FA_RANGE + 6) ** 2;
+  FA.rabbits = FA.rabbits.filter((a) => a.p.distanceToSquared(P) < far2);
+  FA.birds = FA.birds.filter((a) => a.p.distanceToSquared(P) < (FA_RANGE + 20) ** 2);
+  FA.flies = FA.flies.filter((a) => a.home.distanceToSquared(P) < far2);
+  cellsWithin(PL.up.x, PL.up.y, PL.up.z, FA_RANGE - 6, FA.cand);
+  const clean = FA.cand.filter(isCleaned); if (!clean.length) return;
+  const want = { rabbits: Math.min(FA_MAX.rabbits, Math.floor(clean.length / 7)), birds: Math.min(FA_MAX.birds, Math.floor(clean.length / 6)), flies: Math.min(FA_MAX.flies, Math.floor(clean.length / 4)) };
+  const q = new THREE.Vector3();
+  const spot = () => { for (let tr = 0; tr < 5; tr++) { const c = pick(clean); if (randPointInCell(c, q) && q.distanceTo(P) > 16) return true; } return false; };
+  if (FA.rabbits.length < want.rabbits && spot()) spawnRabbit(q);
+  if (FA.birds.length < want.birds && spot()) spawnBird(Math.random() < 0.4 ? q : q.addScaledVector(q.clone().normalize(), 8), Math.random() < 0.4);
+  if (FA.flies.length < want.flies && spot()) spawnFly(q);
+}
+const scareDist = () => (VEH.driving ? 9 : 4.5);
+function updateRabbit(a, dt) {
+  const n = _fa.copy(a.p).normalize();
+  const toPl = _fb.subVectors(a.p, PL.pos); toPl.addScaledVector(n, -toPl.dot(n)); const dPl = toPl.length();
+  if (dPl < scareDist() && a.st !== 'flee') { a.st = 'flee'; a.t = 2.5 + Math.random(); }
+  a.t -= dt;
+  if (a.st === 'sit') { a.ear += dt * 6; if (a.t <= 0) { a.st = 'hop'; a.t = 0.6 + Math.random() * 1.6; a.f.applyAxisAngle(n, (Math.random() - 0.5) * 2.2); } }
+  else {
+    const flee = a.st === 'flee'; if (flee && dPl > 0.01) a.f.lerp(toPl.normalize(), 1 - Math.exp(-dt * 6));
+    const spd = flee ? 5.5 : 1.6; a.hop += dt * (flee ? 9 : 6);
+    const next = _fc.copy(a.p).addScaledVector(a.f, spd * dt); const nd = next.clone().normalize();
+    if (!isCleaned(dirToCell(nd.x, nd.y, nd.z)) || groundH(nd.x, nd.y, nd.z) < WATER + 0.3 || inAnyRock(nd)) { a.f.multiplyScalar(-1); if (!flee) { a.st = 'sit'; a.t = 0.5 + Math.random(); } }
+    else { a.p.copy(next); surf(a.p); }
+    if (a.t <= 0) { a.st = 'sit'; a.t = 1.5 + Math.random() * 4; a.hop = 0; }
+  }
+  n.copy(a.p).normalize(); a.f.addScaledVector(n, -a.f.dot(n)).normalize();
+}
+function updateBird(a, dt) {
+  const n = _fa.copy(a.p).normalize(); a.t -= dt;
+  const dPl = a.p.distanceTo(PL.pos);
+  if (a.st === 'ground') {
+    a.flap = 0;
+    if (Math.random() < dt * 0.8) a.f.applyAxisAngle(n, (Math.random() - 0.5) * 2);
+    if (dPl < scareDist() + 3 || a.t <= 0) { a.st = 'fly'; a.alt = 0.05; a.t = 6 + Math.random() * 10; sfx('flap'); }
+    return;
+  }
+  a.flap += dt * (a.st === 'land' ? 18 : 14);
+  if (a.st === 'fly') {
+    a.f.applyAxisAngle(n, a.turn * dt);
+    const toPl = _fb.subVectors(PL.pos, a.p); toPl.addScaledVector(n, -toPl.dot(n));
+    if (toPl.length() > FA_RANGE - 8) a.f.lerp(toPl.normalize(), 1 - Math.exp(-dt * 0.8));
+    a.alt += (6.5 + Math.sin(a.flap * 0.04) * 2 - a.alt) * dt * 0.7;
+    if (a.t <= 0) { // landen
+      const q = new THREE.Vector3(); const c = dirToCell(n.x, n.y, n.z);
+      cellsWithin(n.x, n.y, n.z, 14, FA.cand); const cl = FA.cand.filter(isCleaned);
+      if (cl.length && randPointInCell(pick(cl), q) && q.distanceTo(PL.pos) > 10) { a.st = 'land'; a.tgt = q; } else a.t = 4;
+    }
+  } else if (a.st === 'land') {
+    const to = _fb.subVectors(a.tgt, a.p); to.addScaledVector(n, -to.dot(n)); const d = to.length();
+    if (d > 0.05) a.f.lerp(to.normalize(), 1 - Math.exp(-dt * 4));
+    a.alt = Math.max(0, Math.min(a.alt, d * 0.6));
+    if (d < 0.4 && a.alt < 0.15) { a.st = 'ground'; a.alt = 0; a.t = 3 + Math.random() * 8; a.p.copy(a.tgt); return; }
+    if (dPl < scareDist() + 3) { a.st = 'fly'; a.t = 5 + Math.random() * 6; }
+  }
+  a.f.addScaledVector(n, -a.f.dot(n)).normalize();
+  const spd = a.st === 'land' ? 3.2 : 5;
+  a.p.addScaledVector(a.f, spd * dt);
+  const nn = _fc.copy(a.p).normalize(); a.p.copy(nn).multiplyScalar(R + groundH(nn.x, nn.y, nn.z) + 0.02 + a.alt);
+}
+function updateFly(a, dt) {
+  a.flap += dt * 30; a.ph += dt;
+  const n = _fa.copy(a.home).normalize();
+  const t1 = tangentOf(n), t2 = _fb.crossVectors(n, t1);
+  const ox = Math.sin(a.ph * 0.7) * 1.6 + Math.sin(a.ph * 1.9) * 0.6, oz = Math.cos(a.ph * 0.5) * 1.6 + Math.sin(a.ph * 2.3) * 0.5;
+  const prev = _fc.copy(a.p);
+  a.p.copy(a.home).addScaledVector(t1, ox).addScaledVector(t2, oz);
+  const nn = a.p.clone().normalize(); a.p.copy(nn).multiplyScalar(R + groundH(nn.x, nn.y, nn.z) + 0.55 + Math.sin(a.ph * 1.3) * 0.35);
+  const mv = prev.sub(a.p).multiplyScalar(-1); mv.addScaledVector(nn, -mv.dot(nn)); if (mv.lengthSq() > 1e-8) a.f.copy(mv.normalize());
+}
+function updateFauna(dt) {
+  if (!FA.ig.rabbit) return;
+  FA.t -= dt; if (FA.t <= 0) { FA.t = 0.6; faunaManage(); }
+  for (const a of FA.rabbits) updateRabbit(a, dt);
+  for (const a of FA.birds) updateBird(a, dt);
+  for (const a of FA.flies) updateFly(a, dt);
+  // Vogelgezwitscher
+  FA.chirpT -= dt; if (FA.chirpT <= 0) { FA.chirpT = 2.5 + Math.random() * 6; if (FA.birds.some((b) => b.p.distanceTo(PL.pos) < 28)) sfx('chirp'); }
+  renderFauna();
+}
+function renderFauna() {
+  const I = FA.ig; for (const k in I) I[k].begin();
+  for (const a of FA.rabbits) {
+    const n = _fY.copy(a.p).normalize(); const hopH = a.st === 'sit' ? 0 : Math.abs(Math.sin(a.hop * Math.PI)) * (a.st === 'flee' ? 0.32 : 0.18);
+    const p = _fb.copy(a.p).addScaledVector(n, hopH);
+    _fZ.copy(a.f); if (a.st !== 'sit') _fZ.addScaledVector(n, Math.cos(a.hop * Math.PI) * 0.25).normalize();
+    _fX.crossVectors(n, _fZ).normalize(); const Y = _fc.crossVectors(_fZ, _fX).normalize();
+    addBasis(I.rabbit, p, _fX, Y, _fZ, a.s, a.col);
+  }
+  for (const a of FA.birds) {
+    const Y = _fY.copy(a.p).normalize(), Z = _fZ.copy(a.f), X = _fX.crossVectors(Y, Z).normalize();
+    const hopP = a.st === 'ground' ? _fb.copy(a.p).addScaledVector(Y, 0.07 + Math.abs(Math.sin(performance.now() / 180 + a.turn * 10)) * 0.02) : a.p;
+    addBasis(I.bird, hopP, X, Y, Z, a.s, a.col);
+    const fl = a.st === 'ground' ? -0.15 : Math.sin(a.flap) * 0.9;
+    const c = Math.cos(fl), s = Math.sin(fl);
+    const XR = _fa.copy(X).multiplyScalar(c).addScaledVector(Y, s), YR = _fc.copy(Y).multiplyScalar(c).addScaledVector(X, -s);
+    addBasis(I.wingR, hopP, XR, YR, Z, a.s, a.col);
+    XR.copy(X).multiplyScalar(c).addScaledVector(Y, -s); YR.copy(Y).multiplyScalar(c).addScaledVector(X, s);
+    addBasis(I.wingL, hopP, XR, YR, Z, a.s, a.col);
+  }
+  for (const a of FA.flies) {
+    const Y = _fY.copy(a.p).normalize(), Z = _fZ.copy(a.f), X = _fX.crossVectors(Y, Z).normalize();
+    addBasis(I.fly, a.p, X, Y, Z, a.s, WHITE_C);
+    const fl = Math.sin(a.flap) * 1.1, c = Math.cos(fl), s = Math.sin(fl);
+    const XR = _fa.copy(X).multiplyScalar(c).addScaledVector(Y, s), YR = _fc.copy(Y).multiplyScalar(c).addScaledVector(X, -s);
+    addBasis(I.fwR, a.p, XR, YR, Z, a.s, a.col);
+    XR.copy(X).multiplyScalar(c).addScaledVector(Y, -s); YR.copy(Y).multiplyScalar(c).addScaledVector(X, s);
+    addBasis(I.fwL, a.p, XR, YR, Z, a.s, a.col);
+  }
+  for (const k in I) I[k].end();
 }
 
 boot();

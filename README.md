@@ -2,7 +2,7 @@
 
 > Ein Praktikant. Ein roter Knopf. 100.000 Teile Müll.
 
-First-Person-Aufräumspiel fürs Handy. Am ersten Tag als Praktikant bei der MüllExpress Intergalaktisch GmbH drückst du den falschen Knopf – und 100.000 Teile Müll regnen auf **Blühonia**, den schönsten Ferienplaneten der Galaxis. Chef Dreckmann lässt dir einen rostigen Schredder da und fliegt davon. Mit dem Kaffee.
+First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation Orbit 7: Statt der Kaffeemaschine erwischst du den falschen Knopf, und 100.000 Teile Müll landen auf **Blühonia**, einem Ferienplaneten, der am nächsten Tag öffnen soll. Chef Dreckmann drückt dir einen alten Schredder in die Hand und fliegt ab.
 
 **Spielen:** https://olfbert.github.io/putzplanet/
 
@@ -15,7 +15,9 @@ First-Person-Aufräumspiel fürs Handy. Am ersten Tag als Praktikant bei der Mü
 - Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5
 - Kehrmaschine „Kehrmaxx“ zum Reinsetzen (Third-Person), mit Bordschredder und Motor-Upgrades
 - Roombas sehen je nach Upgrade anders aus (5 Modelle, wachsen mit dem Tank)
-- 37 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
+- Wo es sauber ist, kommen Hasen, Vögel und Schmetterlinge zurück
+- Preise so ausgelegt, dass man alles kaufen kann, wenn etwa drei Viertel geschafft sind
+- 39 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
 - Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert)
 
