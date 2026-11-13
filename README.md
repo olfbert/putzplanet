@@ -4,7 +4,7 @@
 
 First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation Orbit 7: Statt der Kaffeemaschine erwischst du den falschen Knopf, und 100.000 Teile Müll landen auf **Blühonia**, einem Ferienplaneten, der am nächsten Tag öffnen soll. Chef Dreckmann drückt dir einen alten Schredder in die Hand und fliegt ab.
 
-**Spielen:** https://olfbert.github.io/putzplanet/
+**Spielen:** https://olfbert.github.io/putzplanet/ – am Handy über den Knopf „📲 Als App auf den Homescreen“ im Startmenü als App installieren (Anleitung für iPhone und Android).
 
 - Kugelplanet mit Hügeln, Seen, Wäldern, Wiesen und Felsen – rundherum begehbar, ohne dass man die Wölbung merkt
 - Aufheben, Fegen, Werfen; Schreddi 3000 zahlt pro Teil Münzen

@@ -315,6 +315,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
   #toasts{top:calc(var(--st) + 200px)}
 }
 @media (max-height:500px){ .logo{font-size:40px} }
+.hstep{display:flex;gap:10px;align-items:flex-start;margin:7px 0;font-size:14px;line-height:1.35}.hstep b.n{min-width:24px;height:24px;border-radius:50%;background:#ffd23f;color:#14202b;display:flex;align-items:center;justify-content:center;font-size:13px}.htab{display:flex;gap:6px;margin-bottom:10px}.htab .btn{flex:1}.htab .btn.on{background:#ffd23f;color:#14202b}
 </style>
 </head>
 <body>
@@ -389,6 +390,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
       <div class="row"><input id="codeIn" maxlength="6" placeholder="Code" style="text-transform:uppercase;letter-spacing:3px"><button id="btnJoin" class="btn grn">Beitreten</button></div>
       <div id="joinMsg" class="small" style="margin-top:6px"></div>
     </div>
+    <button id="btnHome" class="btn sec" style="width:100%;margin-top:4px">📲 Als App auf den Homescreen</button>
     <div class="foot">Ein Spiel von Flo · Natur-Modelle: Quaternius (CC0) · PC: WASD, Maus, E/F/Q</div>
   </div>
 </div>
@@ -2469,6 +2471,32 @@ function layoutNotes() {
   const tb = $('#toasts'); if (tb) tb.style.top = y + 'px';
 }
 setInterval(layoutNotes, 120);
+// ---------- Anleitung: Spiel auf den Homescreen legen ----------
+const IS_STANDALONE = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const HOME_OS = () => /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) ? 'ios' : /android/i.test(navigator.userAgent) ? 'android' : 'ios';
+const HOME_STEPS = {
+  ios: ['Öffne das Spiel in <b>Safari</b> (in anderen Browsern geht es auf dem iPhone nicht immer).', 'Tippe unten auf <b>Teilen</b> <span style="font-size:17px">⬆️</span> (das Quadrat mit dem Pfeil nach oben).', 'Scrolle runter und wähle <b>„Zum Home-Bildschirm“</b>.', 'Name bestätigen und oben rechts auf <b>„Hinzufügen“</b> tippen.', 'Fertig! Starte Putzplanet ab jetzt über das neue Symbol – im Vollbild, ohne Adressleiste.'],
+  android: ['Öffne das Spiel in <b>Chrome</b>.', 'Tippe oben rechts auf das Menü <b>⋮</b> (drei Punkte).', 'Wähle <b>„Zum Startbildschirm hinzufügen“</b> bzw. <b>„App installieren“</b>.', 'Mit <b>„Hinzufügen“</b> bestätigen.', 'Fertig! Putzplanet liegt jetzt als Symbol auf deinem Startbildschirm.'],
+};
+function openHomeGuide(os = HOME_OS()) {
+  const steps = HOME_STEPS[os].map((t, i) => `<div class="hstep"><b class="n">${i + 1}</b><div>${t}</div></div>`).join('');
+  showPanel('home', 'Auf den Homescreen', `<div class="htab"><button class="btn sec ${os === 'ios' ? 'on' : ''}" data-os="ios">🍏 iPhone / iPad</button><button class="btn sec ${os === 'android' ? 'on' : ''}" data-os="android">🤖 Android</button></div>
+    ${steps}<div class="small" style="margin-top:10px">Hast du schon gespielt? Die Homescreen-App hat (vor allem auf dem iPhone) einen eigenen Speicher. Exportiere deinen Spielstand deshalb vorher im Menü über „Spielstand exportieren“ und importiere ihn danach in der App.</div>`);
+  for (const b of document.querySelectorAll('.htab .btn')) b.onclick = () => openHomeGuide(b.dataset.os);
+}
+function setupHomeGuide() {
+  const b = $('#btnHome'); if (!b) return;
+  if (IS_STANDALONE()) { b.style.display = 'none'; return; }
+  b.onclick = openHomeGuide;
+  // App-Symbol für den Homescreen
+  try { const cv = document.createElement('canvas'); cv.width = cv.height = 180; const c = cv.getContext('2d');
+    c.fillStyle = '#5ab4ff'; c.fillRect(0, 0, 180, 180); c.fillStyle = '#6cbf4a'; c.strokeStyle = '#14202b'; c.lineWidth = 8; c.beginPath(); c.arc(90, 90, 62, 0, 7); c.fill(); c.stroke();
+    c.fillStyle = '#9c6b3f'; for (const [x, y, r] of [[66, 70, 12], [108, 104, 15], [80, 118, 8], [116, 66, 9]]) { c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); }
+    c.font = '64px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('🧹', 90, 92);
+    const url = cv.toDataURL('image/png'); for (const rel of ['apple-touch-icon', 'icon']) { const l = document.createElement('link'); l.rel = rel; l.href = url; document.head.appendChild(l); } } catch (e) { }
+  // Neue Spieler am Handy einmal darauf hinweisen
+  if (matchMedia('(pointer:coarse)').matches && !localStorage.getItem('pp_homeHint')) { localStorage.setItem('pp_homeHint', '1'); setTimeout(() => { if (!G.running) openHomeGuide(); }, 900); }
+}
 function toast(txt, cls = '') { const t = document.createElement('div'); t.className = 'toast ' + cls; t.textContent = txt; const box = $('#toasts'); box.appendChild(t); while (box.children.length > 3) box.firstChild.remove(); setTimeout(() => t.remove(), 2600); }
 function floatCoins(txt) { const r = $('#coins').getBoundingClientRect(); const f = document.createElement('div'); f.className = 'floater'; f.innerHTML = txt.replace('🌱', '') + ' ' + CI + (txt.includes('🌱') ? ' 🌱' : ''); f.style.left = (r.left + r.width / 2 + 30) + 'px'; f.style.top = (r.bottom + 4) + 'px'; $('#floaters').appendChild(f); setTimeout(() => f.remove(), 1150); $('#coins').classList.add('bump'); setTimeout(() => $('#coins').classList.remove('bump'), 140); }
 let hintTO = 0; function showHint(txt, ms = 7000) { const h = $('#hint'); h.textContent = txt; h.classList.remove('hidden'); clearTimeout(hintTO); hintTO = setTimeout(() => h.classList.add('hidden'), ms); }
@@ -2744,6 +2772,7 @@ async function renderTitle() {
 }
 $('#nameIn').addEventListener('input', (e) => localStorage.setItem('pp_name', e.target.value.trim()));
 $('#btnJoin').onclick = () => joinGame($('#codeIn').value);
+setupHomeGuide();
 async function startSlot(i, fresh) {
   auInit(); loadTip(); $('#loadTxt').textContent = 'Verteile 100.000 Müllteile …'; $('#loading').classList.remove('hidden'); $('#title').classList.add('hidden');
   await sleep(30);
