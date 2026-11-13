@@ -985,12 +985,92 @@ function genWorld(seed) {
       W.dType[idx] = h < WATER + 0.3 ? 255 : t; W.dYaw[idx] = rnd() * TAU; W.dS[idx] = (0.75 + rnd() * 0.6) * DECOR_SC[t];
     }
   }
+  resolveOverlaps(dry);
+}
+
+// ---------------- Überschneidungen auflösen (Bäume/Müll/Gras in Felsen) ----------------
+const RNS = 24; let ROCK_POLY = null;
+function rockPolys() { // Grundriss jedes Felsmodells als Radius je Winkelsektor
+  if (ROCK_POLY) return ROCK_POLY; ROCK_POLY = {};
+  for (const name of ROCKS) {
+    const rad = new Float32Array(RNS);
+    for (const pr of NATURE[name]) { const pa = pr.geo.attributes.position; for (let i = 0; i < pa.count; i++) { const x = pa.getX(i), y = pa.getY(i), z = pa.getZ(i); if (y < 0.08) continue; const a = Math.atan2(z, x), k = ((Math.floor((a / TAU + 1) * RNS)) % RNS + RNS) % RNS, r = Math.hypot(x, z); if (r > rad[k]) rad[k] = r; } }
+    for (let pass = 0; pass < 2; pass++) for (let k = 0; k < RNS; k++) if (!rad[k]) rad[k] = Math.max(rad[(k + 1) % RNS], rad[(k + RNS - 1) % RNS]);
+    ROCK_POLY[name] = rad;
+  }
+  return ROCK_POLY;
+}
+function rockFrame(r) { // lokale Achsen wie in writeMat
+  const l = Math.hypot(r.x, r.y, r.z), nx = r.x / l, ny = r.y / l, nz = r.z / l;
+  let tx, ty, tz; if (Math.abs(ny) < 0.9) { tx = -nz; ty = 0; tz = nx; } else { tx = 0; ty = nz; tz = -ny; }
+  const tl = Math.hypot(tx, ty, tz); tx /= tl; ty /= tl; tz /= tl;
+  const bx = ty * nz - tz * ny, by = tz * nx - tx * nz, bz = tx * ny - ty * nx, c = Math.cos(r.yaw), s = Math.sin(r.yaw);
+  r.n = [nx, ny, nz]; r.ax = [tx * c + bx * s, ty * c + by * s, tz * c + bz * s]; r.az = [bx * c - tx * s, by * c - ty * s, bz * c - tz * s];
+  r.poly = rockPolys()[r.m]; r.maxR = Math.max(...r.poly) * r.s;
+}
+// Abstand (tangential) eines Punkts zum Felsmittelpunkt und Felsrand in dieser Richtung
+const _rk = { d: 0, edge: 0, vx: 0, vy: 0, vz: 0 };
+function rockEdge(r, x, y, z) {
+  let vx = x - r.x, vy = y - r.y, vz = z - r.z; const dn = vx * r.n[0] + vy * r.n[1] + vz * r.n[2];
+  vx -= r.n[0] * dn; vy -= r.n[1] * dn; vz -= r.n[2] * dn;
+  const lx = vx * r.ax[0] + vy * r.ax[1] + vz * r.ax[2], lz = vx * r.az[0] + vy * r.az[1] + vz * r.az[2];
+  const a = (Math.atan2(lz, lx) / TAU + 1) * RNS, k0 = Math.floor(a) % RNS, f = a - Math.floor(a);
+  _rk.edge = (r.poly[k0] * (1 - f) + r.poly[(k0 + 1) % RNS] * f) * r.s; _rk.d = Math.hypot(vx, vy, vz); _rk.vx = vx; _rk.vy = vy; _rk.vz = vz;
+  return _rk;
+}
+function resolveOverlaps(dry) {
+  for (const r of W.rocks) rockFrame(r);
+  // Felsen in alle berührten Zellen eintragen
+  const byCell = new Map(), o = [0, 0, 0];
+  const addTo = (c, r) => { let a = byCell.get(c); if (!a) byCell.set(c, (a = [])); if (!a.includes(r)) a.push(r); };
+  for (const r of W.rocks) {
+    addTo(dirToCell(r.x, r.y, r.z), r);
+    for (const fr of [0.2, 0.4, 0.6, 0.8, 1.0, 1.2]) { const rr = r.maxR * fr + 0.6, nk = Math.max(8, Math.ceil(rr * TAU / 2.5)); for (let k = 0; k < nk; k++) { const a = k / nk * TAU; o[0] = r.x + (r.ax[0] * Math.cos(a) + r.az[0] * Math.sin(a)) * rr; o[1] = r.y + (r.ax[1] * Math.cos(a) + r.az[1] * Math.sin(a)) * rr; o[2] = r.z + (r.ax[2] * Math.cos(a) + r.az[2] * Math.sin(a)) * rr; addTo(dirToCell(o[0], o[1], o[2]), r); } }
+  }
+  // Bäume: nicht in Felsen, Krone nicht durch hohe Felsen
+  const treeHit = (t) => { const list = byCell.get(t.cell); if (!list) return false; for (const r of list) { const e = rockEdge(r, t.x, t.y, t.z); const margin = r.s > 1.1 ? 1.7 * t.s : 0.55; if (e.d < e.edge + margin) return true; } return false; };
+  W.trees = W.trees.filter((t) => t.land ? !byCell.get(t.cell)?.some((r) => { const e = rockEdge(r, t.x, t.y, t.z); return e.d < e.edge + 1.2; }) : !treeHit(t));
+  W.bushes = W.bushes.filter((b) => !(byCell.get(b.cell) || []).some((r) => { const e = rockEdge(r, b.x, b.y, b.z); return e.d < e.edge + 0.6 * b.s; }));
+  // Gras/Blumen in Felsen ausblenden
+  for (const [c, list] of byCell) for (let k = 0; k < 6; k++) { const idx = c * 6 + k; if (W.dType[idx] === 255) continue; for (const r of list) { const e = rockEdge(r, W.dPos[idx * 3], W.dPos[idx * 3 + 1], W.dPos[idx * 3 + 2]); if (e.d < e.edge + 0.15) { W.dType[idx] = 255; break; } } }
+  // Müll aus Felsen und Baumstämmen schieben
+  const trunks = new Map(); for (const t of W.trees) { let a = trunks.get(t.cell); if (!a) trunks.set(t.cell, (a = [])); a.push(t); }
+  const p = new THREE.Vector3(), v = new THREE.Vector3();
+  const setPos = (i, x, y, z) => { const l = Math.hypot(x, y, z); const nx = x / l, ny = y / l, nz = z / l; const rr = R + groundH(nx, ny, nz) - 0.015; W.pos[i * 3] = nx * rr; W.pos[i * 3 + 1] = ny * rr; W.pos[i * 3 + 2] = nz * rr; };
+  const inRock = (x, y, z, pad) => { const list = byCell.get(dirToCell(x, y, z)); if (!list) return false; for (const r of list) { const e = rockEdge(r, x, y, z); if (e.d < e.edge + pad) return true; } return false; };
+  const free = (x, y, z) => { const l = Math.hypot(x, y, z); return dry(x / l, y / l, z / l) && !inRock(x, y, z, 0.2); };
+  const tA = new THREE.Vector3(), tB = new THREE.Vector3();
+  const pushOut = (i, r) => {
+    const x = W.pos[i * 3], y = W.pos[i * 3 + 1], z = W.pos[i * 3 + 2]; const e = rockEdge(r, x, y, z);
+    if (e.d >= e.edge + 0.2) return false;
+    v.set(e.vx, e.vy, e.vz); if (v.lengthSq() < 1e-8) v.set(r.ax[0], r.ax[1], r.ax[2]); v.normalize();
+    const nrm = new THREE.Vector3(r.n[0], r.n[1], r.n[2]);
+    for (const extra of [0.35, 1.2, 2.5]) for (let tr = 0; tr < 12; tr++) { // nach außen schieben, notfalls seitlich
+      const dir = v.clone().applyAxisAngle(nrm, (tr % 2 ? 1 : -1) * Math.ceil(tr / 2) * Math.PI / 6);
+      p.set(r.x, r.y, r.z).addScaledVector(dir, 1e-3); const e2 = rockEdge(r, p.x, p.y, p.z);
+      p.set(r.x, r.y, r.z).addScaledVector(dir, e2.edge + extra + (i % 5) * 0.1);
+      if (free(p.x, p.y, p.z)) { setPos(i, p.x, p.y, p.z); return true; }
+    }
+    // letzte Rettung: freie, trockene Stelle in der Nähe suchen
+    p.set(x, y, z).normalize(); tA.set(-p.z, 0, p.x); if (tA.lengthSq() < 1e-6) tA.set(1, 0, 0); tA.normalize(); tB.crossVectors(p, tA);
+    for (let rad = 3; rad <= 24; rad += 1.5) for (let k = 0; k < 16; k++) { const a = k / 16 * TAU + rad; const q = new THREE.Vector3(x, y, z).addScaledVector(tA, Math.cos(a) * rad).addScaledVector(tB, Math.sin(a) * rad); if (free(q.x, q.y, q.z)) { setPos(i, q.x, q.y, q.z); return true; } }
+    return false;
+  };
+  for (let pass = 0; pass < 3; pass++) {
+    let moved = 0;
+    for (const [c, list] of byCell) for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) for (const r of list) if (pushOut(i, r)) moved++;
+    for (const [c, list] of trunks) for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) for (const t of list) {
+      v.set(W.pos[i * 3] - t.x, W.pos[i * 3 + 1] - t.y, W.pos[i * 3 + 2] - t.z); p.set(t.x, t.y, t.z).normalize(); v.addScaledVector(p, -v.dot(p));
+      const m = t.r + 0.2, d = v.length(); if (d < m) { if (d < 1e-4) v.set(1, 0, 0).addScaledVector(p, -p.x); v.setLength(m + 0.05); if (free(t.x + v.x, t.y + v.y, t.z + v.z)) { setPos(i, t.x + v.x, t.y + v.y, t.z + v.z); moved++; } }
+    }
+    if (!moved) break;
+  }
 }
 function rebuildObstacles() {
   W.obs = new Map();
   const add = (x, y, z, r) => { const c = dirToCell(x, y, z); let a = W.obs.get(c); if (!a) W.obs.set(c, (a = [])); a.push([x, y, z, r]); };
   for (const t of W.trees) add(t.x, t.y, t.z, t.r);
-  for (const r of W.rocks) add(r.x, r.y, r.z, r.r);
+  for (const r of W.rocks) { add(r.x, r.y, r.z, r.r); W.obs.get(dirToCell(r.x, r.y, r.z)).at(-1).push(r); }
   for (const s of SH) add(s.p.x, s.p.y, s.p.z, s.mini ? 1.15 : 1.4);
 }
 function recountCells() {
@@ -1156,6 +1236,9 @@ const ROLLER_GEO = rollerGeo();
 function makeShredderObj(pArr, mini) {
   const p = surf(new THREE.Vector3(pArr[0], pArr[1], pArr[2]));
   const n = p.clone().normalize(), f = tangentOf(n, new THREE.Vector3(0, 0, 1));
+  { const x = new THREE.Vector3().crossVectors(n, f); let hMin = p.length(); const q = new THREE.Vector3();
+    for (const [a, b] of [[1, 0.8], [-1, 0.8], [1, -0.8], [-1, -0.8]]) { q.copy(p).addScaledVector(x, a).addScaledVector(f, b); surf(q); hMin = Math.min(hMin, q.length()); }
+    p.setLength(hMin); }
   const g = new THREE.Group(); g.matrixAutoUpdate = false;
   const add = (geo, mat, ...o) => { ops(geo, o); const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; g.add(m); return m; };
   add(Bx(2.0, 0.8, 1.6), mini ? SHM.body2 : SHM.body, ['t', 0, 0.4, 0]);
@@ -1623,7 +1706,7 @@ function updatePlayer(dt) {
     const list = W.obs.get(c); if (!list) continue;
     for (const o of list) {
       _v1.set(PL.pos.x - o[0], PL.pos.y - o[1], PL.pos.z - o[2]); _v1.addScaledVector(n, -_v1.dot(n));
-      const d = _v1.length(), m = o[3] + PR; if (d < m && d > 1e-5) PL.pos.addScaledVector(_v1, (m - d) / d);
+      const d = _v1.length(), m = (o[4] ? rockEdge(o[4], PL.pos.x, PL.pos.y, PL.pos.z).edge * 0.92 : o[3]) + PR; if (d < m && d > 1e-5) PL.pos.addScaledVector(_v1, (m - d) / d);
     }
   }
   if (G.veh.owned) { _v1.subVectors(PL.pos, VEH.p); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(); if (d < 1.6 && d > 1e-5) PL.pos.addScaledVector(_v1, (1.6 - d) / d); }
@@ -2485,7 +2568,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -2924,7 +3007,7 @@ function ensureVehicle() {
 }
 function placeVehicle(p, f) {
   VEH.p.copy(p); surf(VEH.p); const n = VEH.p.clone().normalize();
-  VEH.f.copy(f || tangentOf(n)).addScaledVector(n, -VEH.f.dot(n)).normalize(); VEH.tp.copy(VEH.p); VEH.tf.copy(VEH.f);
+  VEH.f.copy(f || tangentOf(n)).addScaledVector(n, -VEH.f.dot(n)).normalize(); VEH.tp.copy(VEH.p); VEH.tf.copy(VEH.f); VEH.snap = true;
 }
 const vehNear = () => G.veh.owned && !VEH.driving && VEH.driver < 0 && VEH.p.distanceTo(PL.pos) < 5.5;
 function vehEnter() {
@@ -2970,7 +3053,7 @@ function driveUpdate(dt) {
   VEH.vel += (tgtV - VEH.vel) * (1 - Math.exp(-dt * (tgtV > VEH.vel ? 2.2 : 4)));
   _prevPos.copy(VEH.p);
   VEH.p.addScaledVector(VEH.f, VEH.vel * dt);
-  for (const c of PL.near) { const list = W.obs.get(c); if (!list) continue; for (const o of list) { _v1.set(VEH.p.x - o[0], VEH.p.y - o[1], VEH.p.z - o[2]); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(), m = o[3] + 1.25; if (d < m && d > 1e-5) { VEH.p.addScaledVector(_v1, (m - d) / d); VEH.vel *= 0.92; } } }
+  for (const c of PL.near) { const list = W.obs.get(c); if (!list) continue; for (const o of list) { _v1.set(VEH.p.x - o[0], VEH.p.y - o[1], VEH.p.z - o[2]); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(), m = (o[4] ? rockEdge(o[4], VEH.p.x, VEH.p.y, VEH.p.z).edge * 0.92 : o[3]) + 1.25; if (d < m && d > 1e-5) { VEH.p.addScaledVector(_v1, (m - d) / d); VEH.vel *= 0.92; } } }
   if (groundH(VEH.p.x, VEH.p.y, VEH.p.z) < WATER - 0.25) { VEH.p.copy(_prevPos); VEH.vel *= -0.25; if (!PL.waterMsg || performance.now() - PL.waterMsg > 4000) { PL.waterMsg = performance.now(); toast('Kehrmaxx ist nicht wasserdicht 🌊'); } }
   surf(VEH.p); n.copy(VEH.p).normalize();
   VEH.f.addScaledVector(n, -VEH.f.dot(n)).normalize();
@@ -2991,6 +3074,7 @@ function driveUpdate(dt) {
   }
 }
 const VEH_SHAKE = () => { VIEW.shake = 0.3; };
+const _wA = new THREE.Vector3(), _wB = new THREE.Vector3(), _wC = new THREE.Vector3(), _wD = new THREE.Vector3(), _wF = new THREE.Vector3(), _wR = new THREE.Vector3(), _wU = new THREE.Vector3(), _wP = new THREE.Vector3(), _wG = new THREE.Vector3();
 function vehCollect(dt) {
   VEH.collectT -= dt; if (VEH.collectT > 0) return; VEH.collectT = 0.12;
   const n = _vn.copy(VEH.p).normalize(); const front = _v2.copy(VEH.p).addScaledVector(VEH.f, 2.0); const fn = _v3.copy(front).normalize();
@@ -3022,7 +3106,18 @@ function updateVehicleVisual(dt) {
   if (!VEH.driving) { VEH.p.lerp(VEH.tp, NET.mode === 'guest' || VEH.driver > 0 ? 1 - Math.exp(-dt * 8) : 1); VEH.f.lerp(VEH.tf, NET.mode === 'guest' || VEH.driver > 0 ? 1 - Math.exp(-dt * 8) : 1); }
   else { VEH.tp.copy(VEH.p); VEH.tf.copy(VEH.f); }
   const n = _vn.copy(VEH.p).normalize(); VEH.f.addScaledVector(n, -VEH.f.dot(n)).normalize();
-  setObjMatrix(o.group, VEH.p, n, VEH.f, 1);
+  // An den Boden anpassen: vier Radpunkte abtasten
+  const xm = _v3.crossVectors(n, VEH.f).normalize();
+  const sp = (out, fz, fx) => surf(out.copy(VEH.p).addScaledVector(VEH.f, fz).addScaledVector(xm, fx));
+  sp(_wA, 1.25, 0); sp(_wB, -1.25, 0); sp(_wC, 0, 1.0); sp(_wD, 0, -1.0);
+  _wF.subVectors(_wA, _wB); _wR.subVectors(_wC, _wD);
+  const up = _wU.crossVectors(_wF, _wR).normalize(); if (up.dot(n) < 0.5) up.copy(n);
+  const rAvg = (_wA.length() + _wB.length() + _wC.length() + _wD.length()) / 4;
+  if (!VEH.vup) { VEH.vup = up.clone(); VEH.vr = rAvg; }
+  const k = VEH.snap ? 1 : 1 - Math.exp(-dt * 12); VEH.snap = false;
+  VEH.vup.lerp(up, k).normalize(); VEH.vr += (rAvg - VEH.vr) * k;
+  const vp = _wP.copy(n).multiplyScalar(VEH.vr), vf = _wG.copy(VEH.f).addScaledVector(VEH.vup, -VEH.f.dot(VEH.vup)).normalize();
+  setObjMatrix(o.group, vp, VEH.vup, vf, 1);
   const spin = (VEH.driving ? 6 + Math.abs(VEH.vel) * 2 : 1.2) * dt;
   o.brushes[0].rotation.y += spin; o.brushes[1].rotation.y -= spin; o.roller.rotation.x -= spin * 1.5;
   o.shred.visible = G.veh.auto; o.teethSpin = Math.max(0, (o.teethSpin || 0) - dt); o.teeth.rotation.x += dt * (o.teethSpin > 0 ? 18 : 2);
