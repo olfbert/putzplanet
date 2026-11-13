@@ -294,6 +294,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 .mapLegend .tip{opacity:.7}
 @media (max-width:560px){ .mapHead{flex-wrap:wrap} #mapInfo{order:3;flex-basis:100%} }
 #btnKit{width:56px;height:56px;right:150px;bottom:74px;border-color:#7ff0d0;background:rgba(20,80,70,.8)}
+#btnUnkit{width:56px;height:56px;right:150px;bottom:74px;border-color:#7ff0d0;background:rgba(20,80,70,.8)}
 .shopHint{background:rgba(90,180,255,.14);border:1px solid rgba(90,180,255,.45);border-radius:14px;padding:9px 11px;font-size:12.5px;margin-bottom:8px}
 .charPick{display:flex;gap:6px;overflow-x:auto;touch-action:pan-x;padding:2px 2px 8px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
 .charPick.grid{flex-wrap:wrap;overflow:visible;justify-content:center}
@@ -353,6 +354,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
   <div id="actions">
     <button id="btnVeh" class="abtn hidden">🚜<small>Einsteigen</small></button>
     <button id="btnKit" class="abtn hidden">🏭<small id="kitN">Aufstellen</small></button>
+    <button id="btnUnkit" class="abtn hidden">🔧<small>Abbauen</small></button>
     <button id="btnPlace" class="abtn hidden">🤖<small id="placeN">Absetzen</small></button>
     <button id="btnThrow" class="abtn">💨<small>Werfen</small></button>
     <button id="btnSweep" class="abtn">🧹<small>Fegen</small></button>
@@ -1539,9 +1541,12 @@ const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vect
 function moveOnSurface(o, target, spd, dt, turn = 7) {
   _v1.subVectors(target, o.p); const n = _v2.copy(o.p).normalize(); _v1.addScaledVector(n, -_v1.dot(n));
   const dist = _v1.length();
-  if (dist > 1e-4) { _v1.multiplyScalar(1 / dist); o.f.lerp(_v1, 1 - Math.exp(-dt * turn)); }
+  const tr = turn * Math.max(1, spd / 1.6);   // schnelle Motoren lenken entsprechend schneller
+  if (dist > 1e-4) { _v1.multiplyScalar(1 / dist); o.f.lerp(_v1, 1 - Math.exp(-dt * tr)); }
   o.f.addScaledVector(n, -o.f.dot(n)).normalize();
-  o.p.addScaledVector(o.f, Math.min(dist, spd * dt)); surf(o.p);
+  // nah am Ziel und noch nicht ausgerichtet: abbremsen statt im Kreis drumherum zu fahren
+  let step = Math.min(dist, spd * dt); if (dist < spd * 0.8) step *= clamp(o.f.dot(_v1), 0.12, 1) * clamp(dist / (spd * 0.4), 0.35, 1);
+  o.p.addScaledVector(o.f, step); surf(o.p);
   return dist;
 }
 function updateRoombas(dt) {
@@ -1707,7 +1712,7 @@ function removeRemote(id) { const o = REM.get(id); if (!o) return; scene.remove(
 function clearRemotes() { for (const id of [...REM.keys()]) removeRemote(id); }
 function updateRemotes(dt) {
   for (const o of REM.values()) {
-    if (!o.seen || (G.veh.owned && VEH.driver === o.id)) { o.group.visible = false; o.label.visible = false; continue; }
+    if (!o.seen || activeVehs().some((V) => V.driver === o.id)) { o.group.visible = false; o.label.visible = false; continue; }
     _v3.copy(o.p); o.p.lerp(o.tp, 1 - Math.exp(-dt * 10)); o.f.lerp(o.tf, 1 - Math.exp(-dt * 10));
     o.spd += ((dt > 0 ? _v3.distanceTo(o.p) / dt : 0) - o.spd) * Math.min(1, dt * 6);
     const n = _v1.copy(o.p).normalize(); o.f.addScaledVector(n, -o.f.dot(n)).normalize();
@@ -1902,7 +1907,7 @@ function updatePlayer(dt) {
       const d = _v1.length(), m = (o[4] ? rockEdge(o[4], PL.pos.x, PL.pos.y, PL.pos.z).edge * (o[4].cf || 0.92) : o[3]) + PR; if (d < m && d > 1e-5) PL.pos.addScaledVector(_v1, (m - d) / d);
     }
   }
-  if (G.veh.owned) { _v1.subVectors(PL.pos, VEH.p); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(); if (d < 1.6 && d > 1e-5) PL.pos.addScaledVector(_v1, (1.6 - d) / d); }
+  for (const V of activeVehs()) { _v1.subVectors(PL.pos, V.p); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(); if (d < 1.6 && d > 1e-5) PL.pos.addScaledVector(_v1, (1.6 - d) / d); }
   if (groundH(PL.pos.x, PL.pos.y, PL.pos.z) < WATER - 0.45) { // nicht ins tiefe Wasser
     PL.pos.copy(_prevPos); PL.vel.multiplyScalar(-0.2);
     if (!PL.waterMsg || performance.now() - PL.waterMsg > 4000) { PL.waterMsg = performance.now(); toast('Zu tief zum Waten 🌊'); }
@@ -2166,28 +2171,29 @@ function updateDeposit(dt) {
 // ---------------- Shop ----------------
 function shopAllBought() {
   for (const k of Object.keys(UPG)) if (UPG[k].list[G.upg[k] + 1]) return false;
-  return G.roombaCount >= ROOMBA_MAX && G.shredders.length - 1 >= SHRED_MAX && G.veh.owned && G.veh.auto && !VSPEED[G.veh.spd + 1];
+  return G.roombaCount >= ROOMBA_MAX && G.shredders.length - 1 >= SHRED_MAX && vehCount() >= VEH_MAX && G.veh.auto && !VSPEED[G.veh.spd + 1];
 }
 function costOf(k) {
-  if (k === 'veh') return G.veh.owned ? null : VEH_COST;
-  if (k === 'vauto') return !G.veh.owned || G.veh.auto ? null : VAUTO_COST;
-  if (k === 'vspd') { if (!G.veh.owned) return null; const nx = VSPEED[G.veh.spd + 1]; return nx ? nx.c : null; }
+  if (k === 'veh') return vehCount() >= VEH_MAX ? null : VEH_COSTS[vehCount()];
+  if (k === 'vauto') return !vehCount() || G.veh.auto ? null : VAUTO_COST;
+  if (k === 'vspd') { if (!vehCount()) return null; const nx = VSPEED[G.veh.spd + 1]; return nx ? nx.c : null; }
   if (k === 'roomba') return G.roombaCount >= ROOMBA_MAX ? null : roombaCost(G.roombaCount);
   if (k === 'shredder') { const n = G.shredders.length - 1 + (G.kits || 0); return n >= SHRED_MAX ? null : shredCost(n); }
   const L = UPG[k].list, nx = L[G.upg[k] + 1]; return nx ? nx.c : null;
 }
-function doBuy(k, p) { // nur Solo/Host
+function doBuy(k, p, owner) { // nur Solo/Host
   const c = costOf(k); if (c == null) return 'max'; if (G.coins < c) return 'money';
-  if (k === 'shredder') { G.kits = (G.kits || 0) + 1; }
+  if (k === 'shredder') { G.kits = (G.kits || 0) + 1; (G.kitOwn = G.kitOwn || []).push(owner || MY_UID); }
   else if (k === 'roomba') { G.roombaCount++; syncRoombaCount(); }
   else if (k === 'veh') {
-    G.veh.owned = true; const pos = p ? new THREE.Vector3(p[0], p[1], p[2]) : PL.pos.clone(); surf(pos);
+    const vi = vehCount(); G.veh.n = vi + 1; G.veh.owned = true; ensureVehicle(); const pos = p ? new THREE.Vector3(p[0], p[1], p[2]) : PL.pos.clone(); surf(pos);
     for (const sh of SH) { const d = sh.p.distanceTo(pos); if (d < 5) pos.add(pos.clone().sub(sh.p).setLength(5 - d)); }
+    for (let t2 = 0; t2 < 3; t2++) for (const V of activeVehs()) { if (V === VEHS[vi]) continue; const d = V.p.distanceTo(pos); if (d < 4.5) { const dir = d > 0.05 ? pos.clone().sub(V.p) : new THREE.Vector3().crossVectors(PL.f, pos.clone().normalize()); pos.add(dir.setLength(4.5 - d + 0.05)); surf(pos); } }
     for (const st of W.structs) for (let k2 = 0; k2 < 6; k2++) { const e = rockEdge(st, pos.x, pos.y, pos.z); if (e.d >= e.edge + 2.5) break; pos.add(new THREE.Vector3(e.vx, e.vy, e.vz).setLength(e.edge + 3 - e.d + 0.01)); surf(pos); }
     if (groundH(pos.x, pos.y, pos.z) < WATER) pos.copy(PL.pos);
-    const n = pos.clone().normalize(); placeVehicle(pos, new THREE.Vector3().crossVectors(PL.f, n).normalize()); ensureVehicle(); radio('veh');
+    const n = pos.clone().normalize(); placeVehicle(pos, new THREE.Vector3().crossVectors(PL.f, n).normalize(), VEHS[vi]); radio('veh');
   }
-  else if (k === 'vauto') { G.veh.auto = true; radio('vauto'); if (VEH.items.length) { const ids = VEH.items.splice(0); VEH.load = 0; creditShred(ids, -1, null); toast(`${ids.length} Teile aus dem Tank direkt geschreddert`, 'good'); } }
+  else if (k === 'vauto') { G.veh.auto = true; radio('vauto'); if (vehItemsAll()) { const ids = []; for (const V of activeVehs()) { ids.push(...V.items.splice(0)); V.load = 0; } creditShred(ids, -1, null); toast(`${ids.length} Teile aus dem Tank direkt geschreddert`, 'good'); } }
   else if (k === 'vspd') G.veh.spd++;
   else G.upg[k]++;
   if (k === 'cap' && G.upg.cap === CAP.length - 1) radio('basket');
@@ -2197,20 +2203,36 @@ function doBuy(k, p) { // nur Solo/Host
   return 'ok';
 }
 // Mini-Schredder-Bausatz aufstellen (nur Solo/Host)
-function placeKit(p) {
+function placeKit(p, owner = MY_UID) {
   if (!(G.kits > 0)) return 'none';
+  G.kitOwn = G.kitOwn || []; const ki = G.kitOwn.indexOf(owner); if (ki < 0) return 'notyours';
   const pos = new THREE.Vector3(p[0], p[1], p[2]); surf(pos);
   if (groundH(pos.x, pos.y, pos.z) < WATER + 0.2) return 'water';
   for (const s of SH) if (s.p.distanceTo(pos) < 14) return 'near';
   for (const st of W.structs) { const e = rockEdge(st, pos.x, pos.y, pos.z); if (e.d < e.edge + 3) return 'struct'; }
-  G.kits--; G.shredders.push([pos.x, pos.y, pos.z]); syncShredders(); radio('mini');
+  G.kits--; G.kitOwn.splice(ki, 1); G.shredders.push([pos.x, pos.y, pos.z, owner]); syncShredders(); radio('mini');
   const n = pos.clone().normalize(), ids = [];
   for (const cc of cellsWithin(n.x, n.y, n.z, 4, [])) for (let i = W.cellStart[cc]; i < W.cellStart[cc + 1]; i++) if (!isRem(i) && pos.distanceTo(_v1.set(W.pos[i * 3], W.pos[i * 3 + 1], W.pos[i * 3 + 2])) < 1.9) { removeFromGround(i); ids.push(i); }
   if (ids.length) { creditShred(ids, SH.length - 1, null); netBroadcastRm(ids); trashDirty = true; }
   if (NET.mode === 'host') netBroadcastState(true);
   return 'ok';
 }
-const KIT_ERR = { water: 'Nicht ins Wasser stellen 🌊', near: 'Zu nah an einem anderen Schredder (mind. 14 m)', struct: 'Nicht direkt ans Resort oder an den Laden stellen', none: 'Kein Bausatz übrig' };
+const KIT_ERR = { notyours: 'Das ist nicht dein Bausatz', water: 'Nicht ins Wasser stellen 🌊', near: 'Zu nah an einem anderen Schredder (mind. 14 m)', struct: 'Nicht direkt ans Resort oder an den Laden stellen', none: 'Kein Bausatz übrig' };
+// Mini-Schredder abbauen -> wird wieder zum Bausatz des Besitzers (nur Solo/Host)
+function pickShredder(i, owner = MY_UID) {
+  if (!(i > 0) || !G.shredders[i]) return 'none';
+  if (shOwner(i) !== owner) return 'notyours';
+  G.shredders.splice(i, 1); G.kits = (G.kits || 0) + 1; (G.kitOwn = G.kitOwn || []).push(owner);
+  for (const f of FLY) if (f.si != null && f.si >= 0) { if (f.si === i) f.si = 0; else if (f.si > i) f.si--; }
+  syncShredders(); if (NET.mode === 'host') netBroadcastState(true); return 'ok';
+}
+const nearMyShredder = () => { for (let i = 1; i < SH.length; i++) if (SH[i].p.distanceTo(PL.pos) < 4 && shOwner(i) === MY_UID) return i; return -1; };
+function unKit() {
+  const i = nearMyShredder(); if (i < 0) return;
+  if (NET.mode === 'guest') { netSend({ t: 'unkit', i }); return; }
+  const r = pickShredder(i);
+  if (r === 'ok') { sfx('pick'); toast('Mini-Schredder abgebaut – lauf zum neuen Platz und tippe „Aufstellen“ 🏭', 'good'); } else { sfx('error'); toast('Das ist nicht dein Mini-Schredder', 'bad'); }
+}
 function useKit() {
   const p = PL.pos.clone().addScaledVector(PL.f, 3.2); surf(p);
   if (NET.mode === 'guest') { netSend({ t: 'kitp', p: [p.x, p.y, p.z] }); return; }
@@ -2258,8 +2280,8 @@ function makeSave() {
     loose: [...[...G.loose].map(([id, L]) => [id, ...L]), ...FLY.filter((f) => !f.arc).map((f) => [f.id, f.pos.x, f.pos.y, f.pos.z, 0])], inv: G.inv.slice(),
     player: { p: PL.pos.toArray(), f: PL.f.toArray(), pitch: PL.pitch },
     roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1, r.carry.slice()]), ...RB.carried.map((r) => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z), r.carry.slice()])], ts: Date.now(),
-    st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(), kits: G.kits || 0, coll: b64enc(G.coll),
-    veh: { ...G.veh, p: VEH.p.toArray(), f: VEH.f.toArray(), items: VEH.items.slice() },
+    st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(), kits: G.kits || 0, kitOwn: (G.kitOwn || []).slice(), coll: b64enc(G.coll),
+    veh: { ...G.veh, n: vehCount(), p: VEHS[0].p.toArray(), f: VEHS[0].f.toArray(), items: VEHS[0].items.slice(), list: activeVehs().map((V) => ({ p: V.p.toArray(), f: V.f.toArray(), items: V.items.slice() })) },
   };
 }
 let saveTimer = 0, saving = false;
@@ -2273,13 +2295,17 @@ function applySave(s) {
   W.removed.set(s.removed); recountCells(); refreshAllGround();
   G.coins = s.coins; G.totalCoins = s.totalCoins || s.coins; G.shredded = s.shredded; G.played = s.played || 0; G.tut = s.tut || 0; G.created = s.created || Date.now(); G.won = !!s.won;
   G.upg = { cap: 0, broom: 0, speed: 0, reach: 0, turbo: 0, rspeed: 0, rcap: 0, rrange: 0, combo: 0, ...s.upg };
-  VEH.driving = false; VEH.driver = -1; G.veh = { owned: false, auto: false, spd: 0 }; VEH.items = []; VEH.load = 0;
-  if (s.veh) { G.veh = { owned: !!s.veh.owned, auto: !!s.veh.auto, spd: s.veh.spd | 0 }; if (s.veh.p) placeVehicle(new THREE.Vector3().fromArray(s.veh.p), new THREE.Vector3().fromArray(s.veh.f)); VEH.items = (s.veh.items || []).slice(); VEH.load = VEH.items.reduce((a, id) => a + TYPES[W.type[id]].s, 0); }
+  resetVehicles(); G.veh = { owned: false, auto: false, spd: 0, n: 0 };
+  if (s.veh) {
+    G.veh = { owned: !!s.veh.owned, auto: !!s.veh.auto, spd: s.veh.spd | 0, n: s.veh.n != null ? s.veh.n | 0 : s.veh.owned ? 1 : 0 }; ensureVehicle();
+    const L = s.veh.list || (s.veh.p ? [{ p: s.veh.p, f: s.veh.f, items: s.veh.items }] : []);
+    L.slice(0, vehCount()).forEach((e, i) => { const V = VEHS[i]; if (e.p) placeVehicle(new THREE.Vector3().fromArray(e.p), new THREE.Vector3().fromArray(e.f), V); V.items = (e.items || []).slice(); V.load = V.items.reduce((a, id) => a + TYPES[W.type[id]].s, 0); });
+  }
   COMBO.n = 0; COMBO.tier = 0; COMBO.mult = 1; COMBO.bank = 0; G.invMult = new Map();
   G.roombaCount = s.rc || 0; G.shredders = (s.shredders && s.shredders.length) ? s.shredders : [[0, R, 0]];
   G.loose = new Map((s.loose || []).map((a) => [a[0], [a[1], a[2], a[3], a[4]]]));
   G.inv = (s.inv || []).slice();
-  G.kits = s.kits || 0;
+  G.kits = s.kits || 0; G.kitOwn = (s.kitOwn || []).slice(0, G.kits); while (G.kitOwn.length < G.kits) G.kitOwn.push(MY_UID);
   G.coll = new Uint8Array(COLL_N); if (s.coll) { const u = b64dec(s.coll); G.coll.set(u.subarray(0, Math.min(u.length, COLL_N))); } collRecount(); STR.lobbyDirty = true; CO.dirty = true;
   G.st = { ...freshStats(), ...(s.st || {}) }; G.radio = (s.radio || []).slice(); G.ach = (s.ach || []).slice();
   syncShredders();
@@ -2292,9 +2318,9 @@ function applySave(s) {
   if (!s.ach) achTick(true); // alte Spielstände: bereits erfüllte Erfolge still nachtragen
   // Reparatur: Teile im Tank bei eingebautem Bordschredder, verschollene Teile (alte Versionen)
   G.repaired = 0;
-  if (G.veh.auto && VEH.items.length) { const ids = VEH.items.splice(0); VEH.load = 0; G.shredded += ids.length; G.coins += shredValue(ids); G.repaired += ids.length; }
+  if (G.veh.auto && vehItemsAll()) { const ids = []; for (const V of activeVehs()) { ids.push(...V.items.splice(0)); V.load = 0; } G.shredded += ids.length; G.coins += shredValue(ids); G.repaired += ids.length; }
   let bits = 0; for (let i = 0; i < W.removed.length; i++) { let b = W.removed[i]; while (b) { b &= b - 1; bits++; } }
-  const held = G.loose.size + G.inv.length + VEH.items.length + RB.list.reduce((a, r) => a + r.carry.length, 0);
+  const held = G.loose.size + G.inv.length + vehItemsAll() + RB.list.reduce((a, r) => a + r.carry.length, 0);
   const lost = bits - G.shredded - held;
   if (lost > 0) { G.shredded += lost; G.coins += lost * TURBO[G.upg.turbo].v; G.repaired += lost; }
 }
@@ -2302,8 +2328,8 @@ function newGameState(seed) {
   genWorld(seed); updateGroundGeometry();
   G.coins = 0; G.totalCoins = 0; G.shredded = 0; G.played = 0; G.tut = 0; G.created = Date.now(); G.won = false;
   G.upg = { cap: 0, broom: 0, speed: 0, reach: 0, turbo: 0, rspeed: 0, rcap: 0, rrange: 0, combo: 0 };
-  VEH.driving = false; VEH.driver = -1; G.veh = { owned: false, auto: false, spd: 0 }; VEH.items = []; VEH.load = 0; COMBO.n = 0; COMBO.tier = 0; COMBO.mult = 1; COMBO.bank = 0; G.invMult = new Map();
-  G.roombaCount = 0; G.shredders = [[0, R, 0]]; G.loose = new Map(); G.inv = []; G.kits = 0;
+  resetVehicles(); G.veh = { owned: false, auto: false, spd: 0, n: 0 }; COMBO.n = 0; COMBO.tier = 0; COMBO.mult = 1; COMBO.bank = 0; G.invMult = new Map();
+  G.roombaCount = 0; G.shredders = [[0, R, 0]]; G.loose = new Map(); G.inv = []; G.kits = 0; G.kitOwn = [];
   G.coll = new Uint8Array(COLL_N); collRecount(); STR.lobbyDirty = true; CO.dirty = true; G.st = freshStats(); G.ach = []; G.radio = [];
   syncShredders(); RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear(); spawnAtShredder(); updateHeldModel(); MM.dirty = true;
 }
@@ -2328,15 +2354,22 @@ function loadPeerJS() {
   if (window.Peer) return Promise.resolve(true);
   return new Promise((res) => { const s = document.createElement('script'); s.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'; s.onload = () => res(!!window.Peer); s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(!!window.Peer), 12000); });
 }
+// feste Geräte-ID: wer hat welchen Mini-Schredder gekauft
+const MY_UID = (() => { try { const q = new URLSearchParams(location.search).get('uid'); if (q) return q.slice(0, 12); let u = localStorage.getItem('pp_uid'); if (!u) { u = Math.random().toString(36).slice(2, 10); localStorage.setItem('pp_uid', u); } return u; } catch (e) { return 'local'; } })();
+const myKits = () => (G.kitOwn || []).filter((u) => u === MY_UID).length;
+const shOwner = (i) => (G.shredders[i] && G.shredders[i][3]) || NET.hostUid || MY_UID;
 const myName = () => (localStorage.getItem('pp_name') || '').trim() || 'Putzi';
 function netAct(a, e = 0) { if (NET.mode === 'guest') netSend({ t: 'act', a, e }); else if (NET.mode === 'host') netBroadcast({ t: 'act', id: NET.myId, a, e }); }
-function netSend(m) { if (NET.mode === 'guest' && NET.host && NET.host.open) { try { NET.host.send(m); } catch (e) { } } }
+function netSend(m) {
+  if (NET.mode === 'guest' && NET.host && NET.host.open) { try { NET.host.send(m); } catch (e) { } }
+  else if (NET.mode === 'host') { if (m.t === 'rm') netBroadcastRm(m.ids); else if (m.t === 'lo') netBroadcast(m); } // eigene Aktionen des Hosts an alle Gäste
+}
 function netBroadcastRm(ids, except) { for (let i = 0; i < ids.length; i += 1500) netBroadcast({ t: 'rm', ids: ids.slice(i, i + 1500) }, except); }
 function netBroadcast(m, except) { if (NET.mode !== 'host') return; for (const [c, info] of NET.conns) if (c !== except && c.open && info.ready) { try { c.send(m); } catch (e) { } } }
 const r2 = (v) => Math.round(v * 100) / 100;
 function netBroadcastState(full) {
   if (NET.mode !== 'host') return;
-  if (full) netBroadcast({ t: 'up', kits: G.kits || 0, upg: G.upg, rc: G.roombaCount, shr: G.shredders, c: G.coins, veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray() });
+  if (full) netBroadcast({ t: 'up', kits: G.kits || 0, ko: G.kitOwn || [], hu: MY_UID, upg: G.upg, rc: G.roombaCount, shr: G.shredders, c: G.coins, veh: G.veh, vl: vehList() });
 }
 function rosterList() { const l = [[0, myName(), PCOLORS[0], myChar()]]; for (const info of NET.conns.values()) if (info.ready) l.push([info.id, info.name, info.color, info.chr | 0]); return l; }
 async function hostStart() {
@@ -2355,7 +2388,7 @@ async function hostStart() {
       const info = { id: NET.nextId++, name: 'Gast', color: PCOLORS[(NET.nextId - 1) % PCOLORS.length], ready: false };
       NET.conns.set(conn, info);
       conn.on('data', (m) => hostOnData(conn, info, m));
-      conn.on('close', () => { NET.conns.delete(conn); removeRemote(info.id); if (VEH.driver === info.id) VEH.driver = -1; if (info.ready) { toast(`${info.name} ist gegangen`); netBroadcast({ t: 'pl', list: rosterList() }); netBroadcast({ t: 'msg', txt: `${info.name} ist gegangen` }); } updateMpBadge(); });
+      conn.on('close', () => { NET.conns.delete(conn); removeRemote(info.id); for (const V of VEHS) if (V.driver === info.id) V.driver = -1; if (info.ready) { toast(`${info.name} ist gegangen`); netBroadcast({ t: 'pl', list: rosterList() }); netBroadcast({ t: 'msg', txt: `${info.name} ist gegangen` }); } updateMpBadge(); });
       conn.on('error', () => { });
     });
   };
@@ -2373,8 +2406,8 @@ function hostOnData(conn, info, m) {
   if (!m || typeof m !== 'object') return;
   switch (m.t) {
     case 'hello': {
-      info.name = String(m.name || 'Gast').slice(0, 14); info.ready = true; info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
-      const snap = JSON.stringify({ seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), coll: b64enc(G.coll), veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray(), vd: VEH.driving ? 0 : VEH.driver });
+      info.name = String(m.name || 'Gast').slice(0, 14); info.uid = String(m.uid || 'g' + info.id).slice(0, 12); info.ready = true; info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
+      const snap = JSON.stringify({ kits: G.kits || 0, ko: G.kitOwn || [], hu: MY_UID, seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), coll: b64enc(G.coll), veh: G.veh, vl: vehList(), vds: activeVehs().map((V) => (V.driving ? 0 : V.driver)) });
       const CH_ = 14000, n = Math.ceil(snap.length / CH_);
       for (let i = 0; i < n; i++) conn.send({ t: 'snap', i, n, d: snap.slice(i * CH_, (i + 1) * CH_) });
       addRemote(info.id, info.name, info.color, info.chr);
@@ -2383,17 +2416,19 @@ function hostOnData(conn, info, m) {
       updateMpBadge(); if (!$('#panelWrap').classList.contains('hidden') && PANEL === 'invite') openInvite();
       break;
     }
-    case 'kitp': { const r = Array.isArray(m.p) ? placeKit(m.p) : 'none'; if (r === 'ok') { toast(`${info.name} hat einen Mini-Schredder aufgestellt`); conn.send({ t: 'msg', txt: 'Mini-Schredder aufgestellt! 🏭' }); } else conn.send({ t: 'msg', txt: KIT_ERR[r], bad: true }); netBroadcastState(true); break; }
+    case 'unkit': { const r = pickShredder(m.i | 0, info.uid); conn.send({ t: 'msg', txt: r === 'ok' ? 'Mini-Schredder abgebaut – tippe „Aufstellen“ am neuen Platz' : 'Das ist nicht dein Mini-Schredder', bad: r !== 'ok' }); if (r === 'ok') toast(`${info.name} baut einen Mini-Schredder um`); break; }
+    case 'kitp': { const r = Array.isArray(m.p) ? placeKit(m.p, info.uid) : 'none'; if (r === 'ok') { toast(`${info.name} hat einen Mini-Schredder aufgestellt`); conn.send({ t: 'msg', txt: 'Mini-Schredder aufgestellt! 🏭' }); } else conn.send({ t: 'msg', txt: KIT_ERR[r], bad: true }); netBroadcastState(true); break; }
     case 'char': { info.chr = clamp(m.c | 0, 0, CHAR_PRESETS.length - 1); addRemote(info.id, info.name, info.color, info.chr); netBroadcast({ t: 'pl', list: rosterList() }); break; }
     case 'cget': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; netBroadcast({ t: 'cgot', i, by: info.name }, conn); toast(`${info.name} hat ein Fundstück entdeckt ✨`); } break; }
     case 'cb': { const v = clamp(+m.v || 0, 0, 250000); if (v > 0) { addCoins(v); toast(`${info.name}: Combo-Bonus +${fmt(v)}`); } break; }
     case 'veh': {
-      if (m.a === 'in') { if (G.veh.owned && VEH.driver < 0 && !VEH.driving) { VEH.driver = info.id; conn.send({ t: 'veh', a: 'ok' }); } else conn.send({ t: 'veh', a: 'busy' }); }
-      else if (m.a === 'out' && VEH.driver === info.id) { VEH.driver = -1; if (m.p) { VEH.tp.fromArray(m.p); VEH.tf.fromArray(m.f); } for (const id of (m.items || []).slice(0, 200)) if (typeof id === 'number' && id >= 0 && id < TOTAL && isRem(id)) { VEH.items.push(id); VEH.load += TYPES[W.type[id]].s; } }
+      const vi = m.i | 0, V = vi < vehCount() ? VEHS[vi] : null;
+      if (m.a === 'in') { if (V && V.driver < 0 && !V.driving) { V.driver = info.id; conn.send({ t: 'veh', a: 'ok', i: vi }); } else conn.send({ t: 'veh', a: 'busy' }); }
+      else if (m.a === 'out' && V && V.driver === info.id) { V.driver = -1; if (m.p) { V.tp.fromArray(m.p); V.tf.fromArray(m.f); } for (const id of (m.items || []).slice(0, 200)) if (typeof id === 'number' && id >= 0 && id < TOTAL && isRem(id)) { V.items.push(id); V.load += TYPES[W.type[id]].s; } }
       break;
     }
     case 'act': { if (typeof m.a === 'string' && m.a.length < 10) { remoteAct(info.id, m.a, m.e); netBroadcast({ t: 'act', id: info.id, a: m.a, e: m.e | 0 }, conn); } break; }
-    case 'me': { if (m.v && VEH.driver === info.id) { VEH.tp.set(m.v[0], m.v[1], m.v[2]); VEH.tf.set(m.v[3], m.v[4], m.v[5]); }
+    case 'me': { const MV = VEHS[m.vi | 0]; if (m.v && MV && MV.driver === info.id) { MV.tp.set(m.v[0], m.v[1], m.v[2]); MV.tf.set(m.v[3], m.v[4], m.v[5]); }
       const o = REM.get(info.id); if (o && m.p) { o.tp.fromArray(m.p); o.tf.fromArray(m.f); if (!o.seen) { o.p.copy(o.tp); o.f.copy(o.tf); o.seen = true; } o.h = m.h; } info.p = m.p; info.f = m.f; info.pi = m.pi; info.h = m.h; break; }
     case 'rm': {
       const ok = [], deny = [];
@@ -2409,8 +2444,8 @@ function hostOnData(conn, info, m) {
     }
     case 'lo': { if (typeof m.id === 'number' && isRem(m.id)) { G.loose.set(m.id, [m.p[0], m.p[1], m.p[2], m.y | 0]); trashDirty = true; netBroadcast({ t: 'lo', id: m.id, p: m.p, y: m.y }, conn); } break; }
     case 'buy': {
-      const r = doBuy(m.k, m.p);
-      if (r === 'ok') { const nm = m.k === 'roomba' ? 'einen Roomba' : m.k === 'shredder' ? 'einen Mini-Schredder-Bausatz' : UPG[m.k] ? UPG[m.k].list[G.upg[m.k]].n : m.k; toast(`${info.name} hat ${nm} gekauft`); netBroadcast({ t: 'msg', txt: `${info.name} hat ${nm} gekauft` }); }
+      const r = doBuy(m.k, m.p, info.uid);
+      if (r === 'ok') { const nm = m.k === 'roomba' ? 'einen Roomba' : m.k === 'shredder' ? 'einen Mini-Schredder-Bausatz' : m.k === 'veh' ? 'eine Kehrmaschine' : m.k === 'vauto' ? 'den Bordschredder' : m.k === 'vspd' ? 'einen besseren Kehrmaxx-Motor' : UPG[m.k] ? UPG[m.k].list[G.upg[m.k]].n : m.k; toast(`${info.name} hat ${nm} gekauft`); netBroadcast({ t: 'msg', txt: `${info.name} hat ${nm} gekauft` }); }
       else conn.send({ t: 'msg', txt: r === 'water' ? 'Nicht ins Wasser stellen' : r === 'near' ? 'Zu nah an einem anderen Schredder' : r === 'money' ? 'Nicht genug Münzen in der Team-Kasse' : 'Schon voll ausgebaut', bad: true });
       break;
     }
@@ -2420,7 +2455,7 @@ function hostTick() {
   const pl = [[0, r2(PL.pos.x), r2(PL.pos.y), r2(PL.pos.z), r2(PL.f.x), r2(PL.f.y), r2(PL.f.z), vmHeldType]];
   for (const info of NET.conns.values()) if (info.ready && info.p) pl.push([info.id, r2(info.p[0]), r2(info.p[1]), r2(info.p[2]), r2(info.f[0]), r2(info.f[1]), r2(info.f[2]), info.h]);
   const rb = RB.list.map((r) => [r2(r.p.x), r2(r.p.y), r2(r.p.z), r2(r.f.x), r2(r.f.y), r2(r.f.z), r.st]);
-  const vh = G.veh.owned ? [r2(VEH.p.x), r2(VEH.p.y), r2(VEH.p.z), r2(VEH.f.x), r2(VEH.f.y), r2(VEH.f.z), VEH.driving ? 0 : VEH.driver] : null;
+  const vh = vehCount() ? activeVehs().map((V) => [r2(V.p.x), r2(V.p.y), r2(V.p.z), r2(V.f.x), r2(V.f.y), r2(V.f.z), V.driving ? 0 : V.driver]) : null;
   netBroadcast({ t: 'st', c: Math.floor(G.coins * 10) / 10, s: G.shredded, pl, rb, vh });
 }
 async function joinGame(code) {
@@ -2436,7 +2471,7 @@ async function joinGame(code) {
   peer.on('open', () => {
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
     NET.snap = { parts: [], got: 0 };
-    conn.on('open', () => { conn.send({ t: 'hello', name: myName(), v: 1, chr: myChar() }); msg.textContent = 'Lade Planet vom Host …'; });
+    conn.on('open', () => { conn.send({ t: 'hello', name: myName(), uid: MY_UID, v: 1, chr: myChar() }); msg.textContent = 'Lade Planet vom Host …'; });
     conn.on('data', (m) => { if (m && m.t === 'snap') { clearTimeout(to); } guestOnData(m, conn, peer); });
     conn.on('close', () => { if (NET.mode === 'guest') { toast('Verbindung zum Host verloren', 'bad'); leaveToTitle(); } else fail('Verbindung geschlossen.'); });
   });
@@ -2453,7 +2488,7 @@ function guestOnData(m, conn, peer) {
     case 'st': {
       if (NET.mode !== 'guest') return;
       G.coins = m.c; G.shredded = m.s;
-      if (m.vh) { VEH.driver = m.vh[6]; if (!VEH.driving) { VEH.tp.set(m.vh[0], m.vh[1], m.vh[2]); VEH.tf.set(m.vh[3], m.vh[4], m.vh[5]); } }
+      if (m.vh) (Array.isArray(m.vh[0]) ? m.vh : [m.vh]).forEach((a, i) => { const V = VEHS[i]; if (!V) return; V.driver = a[6]; if (!V.driving) { V.tp.set(a[0], a[1], a[2]); V.tf.set(a[3], a[4], a[5]); } });
       for (const a of m.pl) { if (a[0] === NET.myId) continue; const o = REM.get(a[0]); if (!o) continue; o.tp.set(a[1], a[2], a[3]); o.tf.set(a[4], a[5], a[6]); if (!o.seen) { o.p.copy(o.tp); o.f.copy(o.tf); o.seen = true; } }
       while (RB.list.length < m.rb.length) RB.list.push({ p: new THREE.Vector3(), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(), tf: new THREE.Vector3(0, 0, 1), st: 0, init: false });
       RB.list.length = m.rb.length;
@@ -2464,8 +2499,8 @@ function guestOnData(m, conn, peer) {
     case 'deny': { const before = G.inv.length; G.inv = G.inv.filter((id) => !m.ids.includes(id)); if (G.inv.length !== before) { updateHeldModel(); toast('Das hat sich jemand anderes geschnappt!'); } break; }
     case 'lo': G.loose.set(m.id, [m.p[0], m.p[1], m.p[2], m.y | 0]); trashDirty = true; break;
     case 'fx': { const s = SH[m.si]; if (s) { s.anim = 0.7; if (s.p.distanceTo(PL.pos) < 45) spawnBurst(s.p.clone().addScaledVector(s.n, 0.35).addScaledVector(s.f, 1.1 * s.sc), 3, WHITE_C, 1.6, 1, 3.5); } break; }
-    case 'veh': { if (m.a === 'ok') doEnter(); else { VEH.waitReply = false; toast('Da sitzt schon jemand drin'); } break; }
-    case 'up': { G.kits = m.kits || 0; G.upg = { combo: 0, ...m.upg }; G.roombaCount = m.rc; G.coins = m.c; if (m.veh) { const was = G.veh.owned; G.veh = m.veh; if (!was && m.veh.owned && m.vp) { placeVehicle(new THREE.Vector3().fromArray(m.vp), new THREE.Vector3().fromArray(m.vf)); } } if (JSON.stringify(m.shr) !== JSON.stringify(G.shredders)) { G.shredders = m.shr; syncShredders(); } if (PANEL === 'shop') renderShop(); break; }
+    case 'veh': { if (m.a === 'ok') { VEH = VEHS[m.i | 0] || VEH; doEnter(); } else { VEH.waitReply = false; toast('Da sitzt schon jemand drin'); } break; }
+    case 'up': { G.kits = m.kits || 0; G.kitOwn = m.ko || []; if (m.hu) NET.hostUid = m.hu; G.upg = { combo: 0, ...m.upg }; G.roombaCount = m.rc; G.coins = m.c; if (m.veh) { const was = vehCount(); G.veh = m.veh; ensureVehicle(); (m.vl || []).forEach((a, i) => { if (i >= was && VEHS[i]) placeVehicle(new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(a[3], a[4], a[5]), VEHS[i]); }); } if (JSON.stringify(m.shr) !== JSON.stringify(G.shredders)) { G.shredders = m.shr; syncShredders(); } if (PANEL === 'shop') renderShop(); break; }
     case 'act': { if (m.id !== NET.myId) remoteAct(m.id, m.a, m.e); break; }
     case 'nm': { if (m.id !== NET.myId && typeof m.name === 'string') renameRemote(m.id, m.name.slice(0, 14)); break; }
     case 'cgot': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; if (m.by) toast(`${m.by} hat ein Fundstück entdeckt ✨`); } break; }
@@ -2477,17 +2512,17 @@ function syncRoster(list) { const ids = new Set(); for (const [id, name, color, 
 function startGuest(s, conn, peer) {
   NET.mode = 'guest'; NET.host = conn; NET.peer = peer; NET.myId = s.you; NET.myColor = s.color; NET.hostName = s.host;
   genWorld(s.seed); updateGroundGeometry(); W.removed.set(b64dec(s.removed)); recountCells(); refreshAllGround();
-  G.coins = s.coins; G.shredded = s.shredded; G.upg = s.upg; G.roombaCount = s.rc; G.shredders = s.shr; G.loose = new Map(s.loose.map((a) => [a[0], [a[1], a[2], a[3], a[4]]])); G.inv = []; G.tut = 2; G.won = false;
+  G.coins = s.coins; G.shredded = s.shredded; G.upg = s.upg; G.roombaCount = s.rc; G.shredders = s.shr; G.kits = s.kits || 0; G.kitOwn = s.ko || []; NET.hostUid = s.hu; G.loose = new Map(s.loose.map((a) => [a[0], [a[1], a[2], a[3], a[4]]])); G.inv = []; G.tut = 2; G.won = false;
   G.coll = new Uint8Array(COLL_N); if (s.coll) { const u = b64dec(s.coll); G.coll.set(u.subarray(0, Math.min(u.length, COLL_N))); } collRecount(); STR.lobbyDirty = true; CO.dirty = true;
   G.st = freshStats(); G.st.friends = 1; G.radio = ['start', 'firstPick', 'firstCoin', 'full', 'p1', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90']; G.ach = []; achTick(true); G.ach = G.ach.filter((id) => id !== 'friends');
   syncShredders(); RB.list.length = 0; clearRemotes(); syncRoster(s.list);
-  G.upg = { combo: 0, ...G.upg }; G.veh = s.veh || { owned: false, auto: false, spd: 0 }; VEH.driving = false; VEH.items = []; VEH.load = 0; VEH.driver = s.vd ?? -1;
+  G.upg = { combo: 0, ...G.upg }; G.veh = s.veh || { owned: false, auto: false, spd: 0, n: 0 }; resetVehicles(); ensureVehicle(); (s.vl || []).forEach((a, i) => { const V = VEHS[i]; if (V) { placeVehicle(new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(a[3], a[4], a[5]), V); V.driver = (s.vds || [])[i] ?? -1; } });
   if (s.vp) placeVehicle(new THREE.Vector3().fromArray(s.vp), new THREE.Vector3().fromArray(s.vf));
   const hp = new THREE.Vector3().fromArray(s.hp); placePlayer(hp.addScaledVector(tangentOf(hp.clone().normalize()), 2.5));
   updateHeldModel(); MM.dirty = true; trashDirty = natureDirty = true;
   $('#title').classList.add('hidden'); startIntro(() => { startPlaying(); toast(`Willkommen auf ${s.host}s Planet! 🌍`, 'good'); }); updateMpBadge();
 }
-function guestTick() { netSend({ t: 'me', p: [r2(PL.pos.x), r2(PL.pos.y), r2(PL.pos.z)], f: [r2(PL.f.x), r2(PL.f.y), r2(PL.f.z)], pi: r2(PL.pitch), h: vmHeldType, v: VEH.driving ? [r2(VEH.p.x), r2(VEH.p.y), r2(VEH.p.z), r2(VEH.f.x), r2(VEH.f.y), r2(VEH.f.z)] : null }); }
+function guestTick() { netSend({ t: 'me', p: [r2(PL.pos.x), r2(PL.pos.y), r2(PL.pos.z)], f: [r2(PL.f.x), r2(PL.f.y), r2(PL.f.z)], pi: r2(PL.pitch), h: vmHeldType, vi: VEHS.indexOf(VEH), v: VEH.driving ? [r2(VEH.p.x), r2(VEH.p.y), r2(VEH.p.z), r2(VEH.f.x), r2(VEH.f.y), r2(VEH.f.z)] : null }); }
 function updateMpBadge() {
   const b = $('#mpBadge');
   if (NET.mode === 'host') { b.textContent = `🌐 Code ${NET.code} · ${1 + [...NET.conns.values()].filter((i) => i.ready).length} Spieler`; b.classList.remove('hidden'); }
@@ -2561,14 +2596,14 @@ function renderShop() {
   rows.push(item('roomba', '🤖', `Roomba kaufen`, `${G.roombaCount}/${ROOMBA_MAX} Roombas`, 'Sammelt automatisch Müll rund um deine Schredder', rc, rc == null));
   for (const k of ['rspeed', 'rcap', 'rrange']) { const U = UPG[k], lv = G.upg[k], cur = U.list[lv], nx = U.list[lv + 1]; rows.push(item(k, U.icon, U.name, `${cur.n} (Stufe ${lv + 1}/${U.list.length})`, nx ? `Nächste: <b>${nx.n}</b> – ${U.fx(nx.v)}` : U.fx(cur.v), nx && nx.c, !nx, G.roombaCount === 0 ? 'Erst Roomba' : '')); }
   rows.push('<div class="lbl" style="margin:12px 2px 6px">🚜 Kehrmaschine „Kehrmaxx“</div>');
-  if (!G.veh.owned) rows.push(item('veh', '🚜', 'Kehrmaschine kaufen', 'Zum Reinsetzen – Third-Person', `Fährt über den Müll und saugt alles bis 3 Einheiten ein (Tank ${VCAP}). Steht danach vor dir.`, VEH_COST, false));
-  else {
+  { const nv = vehCount(), c = costOf('veh'); rows.push(item('veh', '🚜', nv ? `${nv + 1 > VEH_MAX ? VEH_MAX : nv + 1}. Kehrmaschine kaufen` : 'Kehrmaschine kaufen', `${nv}/${VEH_MAX} gekauft – jeder Mitspieler kann eine fahren`, `Zum Reinsetzen (Third-Person). Saugt alles bis 3 Einheiten ein (Tank ${VCAP}). Steht danach vor dir.`, c, c == null)); }
+  if (vehCount()) {
     rows.push(item('vauto', '♻️', 'Bordschredder', G.veh.auto ? 'Eingebaut' : 'Nicht eingebaut', 'Die Kehrmaschine schreddert selbst – kein Tank, keine Fahrten zum Schredder', VAUTO_COST, G.veh.auto));
     const lv = G.veh.spd, nx = VSPEED[lv + 1];
     rows.push(item('vspd', '🏁', 'Kehrmaxx-Motor', `${VSPEED[lv].n} (Stufe ${lv + 1}/${VSPEED.length})`, nx ? `Nächste: <b>${nx.n}</b> – ${fmtD(nx.v * 3.6, 0)} km/h` : `${fmtD(VSPEED[lv].v * 3.6, 0)} km/h`, nx && nx.c, !nx));
   }
   const sc = costOf('shredder');
-  rows.push(item('shredder', '🏭', 'Mini-Schredder-Bausatz', `${G.shredders.length - 1}/${SHRED_MAX} aufgestellt${G.kits ? ` · ${G.kits} Bausatz im Gepäck` : ''}`, 'Nimmst du mit und stellst ihn auf, wo du willst – mit eigenem Shop-Automaten', sc, sc == null));
+  rows.push(item('shredder', '🏭', 'Mini-Schredder-Bausatz', `${G.shredders.length - 1}/${SHRED_MAX} aufgestellt${myKits() ? ` · ${myKits()} Bausatz im Gepäck` : ''}`, 'Nimmst du mit und stellst ihn auf, wo du willst – mit eigenem Shop-Automaten', sc, sc == null));
   if (!atShop) rows.unshift(`<div class="shopHint">🛒 Das ist der Katalog. Kaufen kannst du im <b>Putz-Markt</b> neben Schreddi oder an den Automaten der Mini-Schredder – einfach hingehen und antippen. Nächster in ${fmt(shopDistance())} m.</div>`);
   if (PANEL !== 'shop') showPanel('shop', atShop ? 'Putz-Markt' : 'Katalog', rows.join(''));
   else { $('#panelTitle').textContent = atShop ? 'Putz-Markt' : 'Katalog'; $('#panelBody').innerHTML = rows.join(''); }
@@ -2656,7 +2691,7 @@ function openStats() {
     <span>Geschreddert</span><b>${fmt(G.shredded)}</b><span>Noch übrig</span><b>${fmt(left)}</b><span>Sauber</span><b>${fmtD(G.shredded / TOTAL * 100, 2)} %</b>
     <span>Münzen gesamt</span><b>${fmt(G.totalCoins)}</b><span>Roombas</span><b>${G.roombaCount}</b><span>Schredder</span><b>${G.shredders.length}</b>
     <span>Aufgehoben</span><b>${fmt(G.st.picked)}</b><span>Wurf-Treffer</span><b>${fmt(G.st.hits)}</b><span>Gelaufen</span><b>${fmtD(G.st.walked / 1000, 2)} km</b>
-    <span>Noch auf dem Boden</span><b>${fmt(RADAR.ground)}</b><span>Im Korb/Behälter</span><b>${fmt(G.inv.length)}</b><span>Im Kehrmaxx-Tank</span><b>${fmt(VEH.items.length)}</b><span>Bei Roombas unterwegs</span><b>${fmt(RB.list.reduce((a, r) => a + r.carry.length, 0))}</b>
+    <span>Noch auf dem Boden</span><b>${fmt(RADAR.ground)}</b><span>Im Korb/Behälter</span><b>${fmt(G.inv.length)}</b><span>Im Kehrmaxx-Tank</span><b>${fmt(vehItemsAll())}</b><span>Bei Roombas unterwegs</span><b>${fmt(RB.list.reduce((a, r) => a + r.carry.length, 0))}</b>
     <span>Sammlung</span><b>${collTotalDone()}/${COLL.length}</b><span>Fundstücke</span><b>${fmt(G.coll.reduce((a, v) => a + v, 0))}/${fmt(COLL_N)}</b>
     <span>Saubere Flächen</span><b>${fmt(G.st.cells)}</b>${G.st.cheats ? `<span>Cheats benutzt</span><b>${fmt(G.st.cheats)}</b>` : ''}<span>Erfolge</span><b>${G.ach.length}/${ACH.length}</b>
     <span>Spielzeit</span><b>${fmtClock(G.played)}</b><span>Planet</span><b>Blühonia #${W.seed}</b></div>`);
@@ -2711,7 +2746,8 @@ function updateHUD(dt) {
     if (STR.aim) { const t = STR.aim === 'markt' ? '🛒 Putz-Markt · <b>antippen zum Einkaufen</b>' : '🛒 Shop-Automat · <b>antippen</b>'; if (el.innerHTML !== t) el.innerHTML = t; el.classList.add('on'); $('#cross').classList.add('on'); pb.classList.remove('dim'); if (!pb.dataset.shop) { pb.dataset.shop = '1'; pb.querySelector('small').textContent = 'Einkaufen'; } }
     else { el.classList.remove('on'); $('#cross').classList.remove('on'); pb.classList.add('dim'); if (pb.dataset.shop) { delete pb.dataset.shop; pb.querySelector('small').textContent = 'Aufheben'; } }
   } else { const pb = $('#btnPick'); if (pb.dataset.shop) { delete pb.dataset.shop; pb.querySelector('small').textContent = 'Aufheben'; } }
-  const kb = $('#btnKit'), kn = drv ? 0 : (G.kits || 0); kb.classList.toggle('hidden', !kn); if (kn) $('#kitN').textContent = kn > 1 ? `Aufstellen ×${kn}` : 'Aufstellen';
+  const ub = $('#btnUnkit'); ub.classList.toggle('hidden', drv || myKits() > 0 || nearMyShredder() < 0);
+  const kb = $('#btnKit'), kn = drv ? 0 : myKits(); kb.classList.toggle('hidden', !kn); if (kn) $('#kitN').textContent = kn > 1 ? `Aufstellen ×${kn}` : 'Aufstellen';
   const pc = drv ? 0 : RB.carried.length; $('#btnPlace').classList.toggle('hidden', !pc); if (pc) $('#placeN').textContent = pc > 1 ? `Absetzen ×${pc}` : 'Absetzen';
   // Müll-Radar für die letzten Teile, sonst Kompass zum nächsten Schredder
   const rt = waypointTarget() || radarTarget();
@@ -2741,11 +2777,11 @@ function radarScan() {
 }
 function radarTarget() {
   RADAR.t -= 0.1; if (RADAR.t <= 0) { RADAR.t = 1; radarScan(); }
-  if (G.inv.length || (VEH.items.length && !G.veh.auto) || G.won) return null; // erst abladen
+  if (G.inv.length || (vehItemsAll() && !G.veh.auto) || G.won) return null; // erst abladen
   if (RADAR.list.length) { let best = null, bd = 1e18; for (const p of RADAR.list) { const d = p.distanceToSquared(PL.pos); if (d < bd) { bd = d; best = p; } } return { p: best, label: 'Müll' }; }
   if (RADAR.ground === 0 && RADAR.left > 0) { // Rest steckt bei Roombas oder im Tank
     const r = RB.list.find((q) => q.carry.length); if (r) return { p: r.p, label: 'Roomba mit Ladung' };
-    if (VEH.items.length) return { p: VEH.p, label: 'Kehrmaxx-Tank' };
+    { const V = activeVehs().find((q) => q.items.length); if (V) return { p: V.p, label: 'Kehrmaxx-Tank' }; }
   }
   return null;
 }
@@ -2791,7 +2827,7 @@ addEventListener('keyup', (e) => { INPUT.keys[e.code] = false; });
 addEventListener('blur', () => { INPUT.keys = {}; });
 const btn = (id, fn) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); auInit(); fn(); }); };
 btn('#btnPick', () => tryPick()); btn('#btnSweep', () => doSweep()); btn('#btnThrow', () => doThrow());
-btn('#btnShop', () => renderShop()); btn('#btnMenu', () => openMenu()); btn('#btnPlace', () => placeRoomba()); btn('#btnKit', () => useKit()); btn('#btnVeh', () => (VEH.driving ? vehExit() : vehEnter()));
+btn('#btnShop', () => renderShop()); btn('#btnMenu', () => openMenu()); btn('#btnPlace', () => placeRoomba()); btn('#btnKit', () => useKit()); btn('#btnUnkit', () => unKit()); btn('#btnVeh', () => (VEH.driving ? vehExit() : vehEnter()));
 $('#winOk').onclick = () => $('#winScreen').classList.add('hidden');
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) { if (COMBO.n > 0 && G.running) comboCashout(true); saveGame(); } });
@@ -2849,7 +2885,7 @@ function leaveToTitle() {
   if (COMBO.n > 0) comboCashout(true);
   if (NET.mode === 'guest') { try { NET.peer && NET.peer.destroy(); } catch (e) { } NET.mode = 'solo'; NET.host = null; clearRemotes(); RB.list.length = 0; }
   else if (NET.mode === 'host') stopHosting();
-  if (VEH.driving) { VEH.driving = false; VEH.driver = -1; }
+  for (const V of VEHS) if (V.driving) { V.driving = false; V.driver = -1; }
   if (MAP.open) closeMap(); MAP.wp = null;
   G.running = false; closePanel(); $('#hud').classList.add('hidden'); $('#title').classList.remove('hidden'); updateMpBadge(); renderTitle();
   VIEW.mode = 'title'; rebuildOrbitData(); FA.rabbits.length = FA.birds.length = FA.flies.length = 0; renderFauna(); $('#radio').classList.add('hidden'); radioQ.length = 0;
@@ -2929,7 +2965,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { REM, addRemote, openInvite, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { updateRoombas, REM, addRemote, openInvite, VEHS, pickShredder, unKit, MY_UID, get SH() { return SH; }, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3354,10 +3390,19 @@ function comboTick(dt) {
 }
 
 // ---------------- Kehrmaschine ----------------
-const VSPEED = [{ n: 'Standard', v: 6 }, { n: 'Tuning', v: 8, c: 1500 }, { n: 'Sportmotor', v: 10.5, c: 4000 }, { n: 'Turbo', v: 13.5, c: 9000 }, { n: 'Rakete', v: 17, c: 20000 }];
-const VEH_COST = 5000, VAUTO_COST = 2000, VCAP = 60;
-const VEH = { obj: null, p: new THREE.Vector3(0, R, 0), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(), tf: new THREE.Vector3(0, 0, 1), driving: false, driver: -1, load: 0, items: [], vel: 0, collectT: 0, depCD: 0, camPitch: 0.3, camP: new THREE.Vector3(), lookT: 0, waitReply: false };
-G.veh = { owned: false, auto: false, spd: 0 };
+const VSPEED = [{ n: 'Standard', v: 6 }, { n: 'Tuning', v: 8, c: 3000 }, { n: 'Sportmotor', v: 10.5, c: 8000 }, { n: 'Turbo', v: 13.5, c: 18000 }, { n: 'Rakete', v: 17, c: 40000 }];
+// Mehrere Kehrmaschinen: jede kann von einem Spieler gefahren werden. Bordschredder & Motor gelten für alle.
+const VEH_COSTS = [12000, 24000, 45000, 80000], VEH_MAX = VEH_COSTS.length, VAUTO_COST = 8000, VCAP = 60;
+const mkVehState = () => ({ obj: null, p: new THREE.Vector3(0, R, 0), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(), tf: new THREE.Vector3(0, 0, 1), driving: false, driver: -1, load: 0, items: [], vel: 0, collectT: 0, depCD: 0, camPitch: 0.3, camP: new THREE.Vector3(), lookT: 0, waitReply: false });
+const VEHS = [mkVehState()];
+let VEH = VEHS[0];   // die Maschine, in der ich sitze bzw. die nächste freie
+G.veh = { owned: false, auto: false, spd: 0, n: 0 };
+const vehCount = () => (G.veh.n != null ? G.veh.n : G.veh.owned ? 1 : 0);
+const activeVehs = () => VEHS.slice(0, vehCount());
+const vehItemsAll = () => activeVehs().reduce((a, V) => a + V.items.length, 0);
+const vehList = () => activeVehs().map((V) => [r2v(V.p.x), r2v(V.p.y), r2v(V.p.z), r2v(V.f.x), r2v(V.f.y), r2v(V.f.z)]);
+const r2v = (v) => Math.round(v * 100) / 100;
+function resetVehicles() { for (const V of VEHS) { V.driving = false; V.driver = -1; V.items = []; V.load = 0; V.waitReply = false; } VEH = VEHS[0]; }
 function makeSweeper() {
   const g = new THREE.Group(); g.matrixAutoUpdate = false;
   const Y = lamb(0xf4a300), D = lamb(0x23272b), GL = lamb(0x9ad8ff), BL = lamb(0x3d6a8a), MT = lamb(0x9aa3ab), RD = lamb(0xd62828), SK = lamb(0xffd7b5), ST = lamb(0xe8c46a);
@@ -3397,18 +3442,26 @@ function makeSweeper() {
   return { group: g, brushes, roller, beacon, shred, teeth, spoiler, flames, label };
 }
 function ensureVehicle() {
-  if (!G.veh.owned) { if (VEH.obj) { VEH.obj.group.visible = false; VEH.obj.label.visible = false; } return; }
-  if (!VEH.obj) VEH.obj = makeSweeper();
-  VEH.obj.group.visible = true;
+  const n = vehCount(); G.veh.owned = n > 0;
+  while (VEHS.length < n) VEHS.push(mkVehState());
+  VEHS.forEach((V, i) => {
+    if (i < n) { if (!V.obj) { V.obj = makeSweeper(); if (n > 1 || i > 0) { scene.remove(V.obj.label); V.obj.label = makeLabel('KEHRMAXX ' + (i + 1), '#ffd23f', 2.2); } } V.obj.group.visible = true; }
+    else if (V.obj) { V.obj.group.visible = false; V.obj.label.visible = false; }
+  });
 }
-function placeVehicle(p, f) {
-  VEH.p.copy(p); surf(VEH.p); const n = VEH.p.clone().normalize();
-  VEH.f.copy(f || tangentOf(n)).addScaledVector(n, -VEH.f.dot(n)).normalize(); VEH.tp.copy(VEH.p); VEH.tf.copy(VEH.f); VEH.snap = true;
+function placeVehicle(p, f, V = VEH) {
+  V.p.copy(p); surf(V.p); const n = V.p.clone().normalize();
+  V.f.copy(f || tangentOf(n)).addScaledVector(n, -V.f.dot(n)).normalize(); V.tp.copy(V.p); V.tf.copy(V.f); V.snap = true;
 }
-const vehNear = () => G.veh.owned && !VEH.driving && VEH.driver < 0 && VEH.p.distanceTo(PL.pos) < 5.5;
+// nächste freie Maschine in Reichweite wird zu VEH
+function vehNear() {
+  if (VEH.driving) return false; let best = null, bd = 5.5;
+  for (const V of activeVehs()) { if (V.driver >= 0) continue; const d = V.p.distanceTo(PL.pos); if (d < bd) { bd = d; best = V; } }
+  if (best) VEH = best; return !!best;
+}
 function vehEnter() {
   if (!vehNear()) return;
-  if (NET.mode === 'guest') { if (VEH.waitReply) return; VEH.waitReply = true; netSend({ t: 'veh', a: 'in' }); setTimeout(() => (VEH.waitReply = false), 3000); return; }
+  if (NET.mode === 'guest') { if (VEH.waitReply) return; VEH.waitReply = true; const V = VEH; netSend({ t: 'veh', a: 'in', i: VEHS.indexOf(V) }); setTimeout(() => (V.waitReply = false), 3000); return; }
   if (VEH.driver > 0) { toast('Da sitzt schon jemand drin'); return; }
   VEH.driver = 0; doEnter();
 }
@@ -3425,7 +3478,7 @@ function vehExit() {
   const tries = [right.clone().multiplyScalar(-2.4), right.clone().multiplyScalar(2.4), VEH.f.clone().multiplyScalar(-3.4), VEH.f.clone().multiplyScalar(3.4)];
   let p = null; for (const o of tries) { const q = VEH.p.clone().add(o); surf(q); if (groundH(q.x, q.y, q.z) > WATER - 0.3) { p = q; break; } }
   placePlayer(p || VEH.p.clone(), VEH.f.clone()); PL.pitch = -0.1;
-  if (NET.mode === 'guest') { netSend({ t: 'veh', a: 'out', p: VEH.p.toArray(), f: VEH.f.toArray(), items: VEH.items.splice(0) }); VEH.load = 0; } else VEH.driver = -1;
+  if (NET.mode === 'guest') { netSend({ t: 'veh', a: 'out', i: VEHS.indexOf(VEH), p: VEH.p.toArray(), f: VEH.f.toArray(), items: VEH.items.splice(0) }); VEH.load = 0; } else VEH.driver = -1;
   sfx('thud');
 }
 const _vd = new THREE.Vector3(), _vr = new THREE.Vector3(), _vn = new THREE.Vector3();
@@ -3450,6 +3503,7 @@ function driveUpdate(dt) {
   _prevPos.copy(VEH.p);
   VEH.p.addScaledVector(VEH.f, VEH.vel * dt);
   for (const c of PL.near) { const list = W.obs.get(c); if (!list) continue; for (const o of list) { _v1.set(VEH.p.x - o[0], VEH.p.y - o[1], VEH.p.z - o[2]); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(), m = (o[4] ? rockEdge(o[4], VEH.p.x, VEH.p.y, VEH.p.z).edge * (o[4].cf || 0.92) : o[3]) + 1.25; if (d < m && d > 1e-5) { VEH.p.addScaledVector(_v1, (m - d) / d); VEH.vel *= 0.92; } } }
+  for (const V of activeVehs()) { if (V === VEH) continue; _v1.subVectors(VEH.p, V.p); _v1.addScaledVector(n, -_v1.dot(n)); const d = _v1.length(); if (d < 3.4 && d > 1e-5) { VEH.p.addScaledVector(_v1, (3.4 - d) / d); VEH.vel *= 0.85; } }
   if (groundH(VEH.p.x, VEH.p.y, VEH.p.z) < WATER - 0.25) { VEH.p.copy(_prevPos); VEH.vel *= -0.25; if (!PL.waterMsg || performance.now() - PL.waterMsg > 4000) { PL.waterMsg = performance.now(); toast('Kehrmaxx ist nicht wasserdicht 🌊'); } }
   surf(VEH.p); n.copy(VEH.p).normalize();
   VEH.f.addScaledVector(n, -VEH.f.dot(n)).normalize();
@@ -3498,8 +3552,9 @@ function vehCollect(dt) {
   if (G.veh.auto) { if (VEH.obj) VEH.obj.teethSpin = 0.6; finishShred(got, -1); }
   else { VEH.items.push(...got); VEH.load = units; }
 }
-function updateVehicleVisual(dt) {
-  ensureVehicle(); const o = VEH.obj; if (!o || !G.veh.owned) return;
+function updateVehicleVisual(dt) { ensureVehicle(); for (const V of activeVehs()) updateOneVehicle(V, dt); }
+function updateOneVehicle(VEH, dt) {
+  const o = VEH.obj; if (!o) return;
   if (!VEH.driving) { VEH.p.lerp(VEH.tp, NET.mode === 'guest' || VEH.driver > 0 ? 1 - Math.exp(-dt * 8) : 1); VEH.f.lerp(VEH.tf, NET.mode === 'guest' || VEH.driver > 0 ? 1 - Math.exp(-dt * 8) : 1); }
   else { VEH.tp.copy(VEH.p); VEH.tf.copy(VEH.f); }
   const n = _vn.copy(VEH.p).normalize(); VEH.f.addScaledVector(n, -VEH.f.dot(n)).normalize();
@@ -3847,7 +3902,7 @@ function drawMapOverlay() {
   // Roombas
   for (const r of RB.list) { const [x, y] = P(r.p); c.fillStyle = r.carry && r.carry.length ? '#ffb347' : '#ffffff'; c.strokeStyle = '#14202b'; c.lineWidth = 1 * u; c.beginPath(); c.arc(x, y, 2.6 * u, 0, TAU); c.fill(); c.stroke(); }
   // Kehrmaschine
-  if (G.veh.owned) { const [x, y] = P(VEH.p); c.fillStyle = '#f4a300'; c.strokeStyle = '#14202b'; c.lineWidth = 1.5 * u; c.fillRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); c.strokeRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); }
+  for (const V of activeVehs()) { const [x, y] = P(V.p); c.fillStyle = '#f4a300'; c.strokeStyle = '#14202b'; c.lineWidth = 1.5 * u; c.fillRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); c.strokeRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); }
   // Resort & Laden
   for (const st of W.structs || []) { const [x, y] = P(_mv.set(st.x, st.y, st.z)); const r = (st.kind === 'resort' ? 8 : 5) * u; c.fillStyle = st.kind === 'resort' ? '#ff9a8b' : '#5ab4ff'; c.strokeStyle = '#14202b'; c.lineWidth = 2 * u; c.beginPath(); c.roundRect ? c.roundRect(x - r, y - r, 2 * r, 2 * r, 3 * u) : c.rect(x - r, y - r, 2 * r, 2 * r); c.fill(); c.stroke(); c.font = `bold ${10 * u}px Nunito, sans-serif`; c.textAlign = 'center'; c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.7)'; c.lineWidth = 3 * u; const lb = st.kind === 'resort' ? 'Resort' : 'Putz-Markt'; c.strokeText(lb, x, y + r + 11 * u); c.fillText(lb, x, y + r + 11 * u); }
   // Schredder
