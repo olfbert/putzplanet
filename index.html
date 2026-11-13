@@ -976,13 +976,15 @@ const W = {
   seed: -1,
   pos: new Float32Array(TOTAL * 3), type: new Uint8Array(TOTAL), yaw: new Uint8Array(TOTAL), vari: new Uint8Array(TOTAL), cell: new Uint16Array(TOTAL),
   cellStart: new Int32Array(CELLS + 1), cellInit: new Uint16Array(CELLS), cellLeft: new Uint16Array(CELLS),
-  removed: new Uint8Array(TOTAL >> 3),
+  removed: new Uint8Array(TOTAL >> 3), shot: new Uint8Array(TOTAL >> 3),
   trees: [], rocks: [], bushes: [], structs: [], cPos: null, cType: null, cCell: null, cByCell: new Map(),
   dPos: new Float32Array(CELLS * 6 * 3), dType: new Uint8Array(CELLS * 6), dYaw: new Float32Array(CELLS * 6), dS: new Float32Array(CELLS * 6),
   obs: new Map(),
 };
 const isRem = (i) => (W.removed[i >> 3] >> (i & 7)) & 1;
 const setRem = (i) => { W.removed[i >> 3] |= 1 << (i & 7); };
+const isShot = (i) => (W.shot[i >> 3] >> (i & 7)) & 1;
+const setShot = (i) => { W.shot[i >> 3] |= 1 << (i & 7); };
 const ALIVE_TREES = ['CommonTree_1', 'CommonTree_3', 'CommonTree_5', 'Pine_2', 'Pine_5'];
 const DEAD_TREES = ['DeadTree_1', 'DeadTree_3'];
 const ROCKS = ['Rock_Medium_1', 'Rock_Medium_2', 'Rock_Medium_3'];
@@ -1043,7 +1045,7 @@ function genWorld(seed) {
     }
   }
   W.cellStart[CELLS] = n;
-  W.removed.fill(0); W.cellLeft.set(W.cellInit);
+  W.removed.fill(0); W.shot.fill(0); W.cellLeft.set(W.cellInit);
   // Natur: Wälder, Felsen, Büsche, Wiese
   const place = (dir, arr, extra) => { const rr = R + groundH(dir[0], dir[1], dir[2]) - (extra.sink || 0); arr.push({ x: dir[0] * rr, y: dir[1] * rr, z: dir[2] * rr, cell: dirToCell(dir[0], dir[1], dir[2]), yaw: rnd() * TAU, ...extra }); };
   const forest = (x, y, z) => clamp((vnoise(x * 4.6 + 50, y * 4.6 + 60, z * 4.6 + 70) - 0.5) / 0.14, 0, 1);
@@ -2153,7 +2155,10 @@ function finishShred(ids, si) {
 }
 function shredValue(ids, mults) { let v = 0; ids.forEach((id, k) => { v += TYPES[W.type[id]].v * (mults ? mults[k] || 1 : 1); }); return v * TURBO[G.upg.turbo].v; }
 function creditShred(ids, si, by, roomba = false, mults = null) {
-  const v = shredValue(ids, mults); addCoins(v); G.shredded += ids.length;
+  // jedes Teil zählt nur einmal (Gäste können Teile melden, die der Host schon geschreddert hat)
+  if (ids.some((id) => isShot(id))) { const keep = ids.map((id) => !isShot(id)); ids = ids.filter((_, k) => keep[k]); if (mults) mults = mults.filter((_, k) => keep[k]); if (!ids.length) return; }
+  for (const id of ids) setShot(id);
+  const v = shredValue(ids, mults); addCoins(v); G.shredded = Math.min(TOTAL, G.shredded + ids.length);
   for (const id of ids) G.loose.delete(id);
   const s = SH[si];
   if (s) { if (s.p.distanceTo(PL.pos) < 45) for (let k = 0; k < Math.min(8, 2 + ids.length); k++) spawnBurst(s.p.clone().addScaledVector(s.n, 0.35).addScaledVector(s.f, 1.1 * s.sc), 1, WHITE_C, 1.6, 1, 3.5); s.anim = Math.max(s.anim, 0.5); }
@@ -2323,6 +2328,10 @@ function applySave(s) {
   const held = G.loose.size + G.inv.length + vehItemsAll() + RB.list.reduce((a, r) => a + r.carry.length, 0);
   const lost = bits - G.shredded - held;
   if (lost > 0) { G.shredded += lost; G.coins += lost * TURBO[G.upg.turbo].v; G.repaired += lost; }
+  else if (lost < 0) G.shredded = Math.max(0, bits - held);   // doppelt gezählte Teile korrigieren
+  // gutgeschrieben = entfernt, aber nicht mehr in Händen/Tank/Roomba
+  W.shot.set(W.removed); const unshot = (id) => { W.shot[id >> 3] &= ~(1 << (id & 7)); };
+  for (const id of G.loose.keys()) unshot(id); for (const id of G.inv) unshot(id); for (const V of activeVehs()) for (const id of V.items) unshot(id); for (const r of RB.list) for (const id of r.carry) unshot(id);
 }
 function newGameState(seed) {
   genWorld(seed); updateGroundGeometry();
@@ -2388,7 +2397,7 @@ async function hostStart() {
       const info = { id: NET.nextId++, name: 'Gast', color: PCOLORS[(NET.nextId - 1) % PCOLORS.length], ready: false };
       NET.conns.set(conn, info);
       conn.on('data', (m) => hostOnData(conn, info, m));
-      conn.on('close', () => { NET.conns.delete(conn); removeRemote(info.id); for (const V of VEHS) if (V.driver === info.id) V.driver = -1; if (info.ready) { toast(`${info.name} ist gegangen`); netBroadcast({ t: 'pl', list: rosterList() }); netBroadcast({ t: 'msg', txt: `${info.name} ist gegangen` }); } updateMpBadge(); });
+      conn.on('close', () => dropConn(conn, info));
       conn.on('error', () => { });
     });
   };
@@ -2403,10 +2412,12 @@ function stopHosting() {
   NET.peer = null; NET.conns.clear(); NET.mode = 'solo'; NET.code = ''; clearRemotes(); updateMpBadge();
 }
 function hostOnData(conn, info, m) {
+  info.seen = performance.now();
   if (!m || typeof m !== 'object') return;
   switch (m.t) {
     case 'hello': {
-      info.name = String(m.name || 'Gast').slice(0, 14); info.uid = String(m.uid || 'g' + info.id).slice(0, 12); info.ready = true; info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
+      info.name = String(m.name || 'Gast').slice(0, 14); info.uid = String(m.uid || 'g' + info.id).slice(0, 12); info.ready = true;
+      for (const [c2, i2] of [...NET.conns]) if (c2 !== conn && i2.uid === info.uid) dropConn(c2, i2, true);   // gleiche Person neu verbunden info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
       const snap = JSON.stringify({ kits: G.kits || 0, ko: G.kitOwn || [], hu: MY_UID, seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), coll: b64enc(G.coll), veh: G.veh, vl: vehList(), vds: activeVehs().map((V) => (V.driving ? 0 : V.driver)) });
       const CH_ = 14000, n = Math.ceil(snap.length / CH_);
       for (let i = 0; i < n; i++) conn.send({ t: 'snap', i, n, d: snap.slice(i * CH_, (i + 1) * CH_) });
@@ -2451,7 +2462,15 @@ function hostOnData(conn, info, m) {
     }
   }
 }
+function dropConn(conn, info, quiet = false) {
+  if (!NET.conns.has(conn)) return; NET.conns.delete(conn); try { conn.close(); } catch (e) { }
+  removeRemote(info.id); for (const V of VEHS) if (V.driver === info.id) V.driver = -1;
+  if (info.ready) { if (!quiet) { toast(`${info.name} ist gegangen`); netBroadcast({ t: 'msg', txt: `${info.name} ist gegangen` }); } netBroadcast({ t: 'pl', list: rosterList() }); }
+  updateMpBadge();
+}
 function hostTick() {
+  const now = performance.now();   // Verbindungen ohne Lebenszeichen (Handy gesperrt, App gewechselt) aufräumen
+  for (const [c, info] of [...NET.conns]) if (info.ready && now - (info.seen || now) > 25000) dropConn(c, info);
   const pl = [[0, r2(PL.pos.x), r2(PL.pos.y), r2(PL.pos.z), r2(PL.f.x), r2(PL.f.y), r2(PL.f.z), vmHeldType]];
   for (const info of NET.conns.values()) if (info.ready && info.p) pl.push([info.id, r2(info.p[0]), r2(info.p[1]), r2(info.p[2]), r2(info.f[0]), r2(info.f[1]), r2(info.f[2]), info.h]);
   const rb = RB.list.map((r) => [r2(r.p.x), r2(r.p.y), r2(r.p.z), r2(r.f.x), r2(r.f.y), r2(r.f.z), r.st]);
@@ -2514,7 +2533,7 @@ function startGuest(s, conn, peer) {
   genWorld(s.seed); updateGroundGeometry(); W.removed.set(b64dec(s.removed)); recountCells(); refreshAllGround();
   G.coins = s.coins; G.shredded = s.shredded; G.upg = s.upg; G.roombaCount = s.rc; G.shredders = s.shr; G.kits = s.kits || 0; G.kitOwn = s.ko || []; NET.hostUid = s.hu; G.loose = new Map(s.loose.map((a) => [a[0], [a[1], a[2], a[3], a[4]]])); G.inv = []; G.tut = 2; G.won = false;
   G.coll = new Uint8Array(COLL_N); if (s.coll) { const u = b64dec(s.coll); G.coll.set(u.subarray(0, Math.min(u.length, COLL_N))); } collRecount(); STR.lobbyDirty = true; CO.dirty = true;
-  G.st = freshStats(); G.st.friends = 1; G.radio = ['start', 'firstPick', 'firstCoin', 'full', 'p1', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90']; G.ach = []; achTick(true); G.ach = G.ach.filter((id) => id !== 'friends');
+  G.st = freshStats(); G.st.friends = 1; G.radio = ['start', 'firstPick', 'firstCoin', 'full', 'p1', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90']; G.ach = (() => { try { return JSON.parse(localStorage.getItem('pp_ach_guest') || '[]'); } catch (e) { return []; } })(); NET.achQuiet = performance.now() + 5000;
   syncShredders(); RB.list.length = 0; clearRemotes(); syncRoster(s.list);
   G.upg = { combo: 0, ...G.upg }; G.veh = s.veh || { owned: false, auto: false, spd: 0, n: 0 }; resetVehicles(); ensureVehicle(); (s.vl || []).forEach((a, i) => { const V = VEHS[i]; if (V) { placeVehicle(new THREE.Vector3(a[0], a[1], a[2]), new THREE.Vector3(a[3], a[4], a[5]), V); V.driver = (s.vds || [])[i] ?? -1; } });
   if (s.vp) placeVehicle(new THREE.Vector3().fromArray(s.vp), new THREE.Vector3().fromArray(s.vf));
@@ -2965,7 +2984,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { updateRoombas, REM, addRemote, openInvite, VEHS, pickShredder, unKit, MY_UID, get SH() { return SH; }, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { openMap, openCollection, removeFromGround, importSave, isShot, creditShred, updateRoombas, REM, addRemote, openInvite, VEHS, pickShredder, unKit, MY_UID, get SH() { return SH; }, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3198,9 +3217,10 @@ const ACH = [
 ];
 const achQ = []; let achOn = false;
 function achTick(silent) {
+  if (NET.mode === 'guest' && performance.now() < (NET.achQuiet || 0)) silent = true;   // direkt nach dem Beitritt: still nachtragen
   for (const a of ACH) {
     if (G.ach.includes(a.id) || a.v() < a.max) continue;
-    G.ach.push(a.id);
+    G.ach.push(a.id); if (NET.mode === 'guest') try { localStorage.setItem('pp_ach_guest', JSON.stringify(G.ach)); } catch (e) { }
     if (silent) continue;
     if (a.r && NET.mode !== 'guest') addCoins(a.r * TURBO[G.upg.turbo].v);
     achQ.push(a); if (!achOn) achNext();
@@ -3899,6 +3919,8 @@ function drawMapOverlay() {
   for (const r of W.rocks) { const [x, y] = P(_mv.set(r.x, r.y, r.z)); c.beginPath(); c.arc(x, y, Math.max(1, 0.8 * u * r.s), 0, TAU); c.fill(); }
   // Restmüll (Radar) – nur wenn wenige Teile übrig sind
   if (RADAR.list.length) { const pulse = 2.2 + Math.sin(performance.now() / 200) * 0.8; c.fillStyle = '#ff2d55'; for (const p of RADAR.list) { const [x, y] = P(p); c.beginPath(); c.arc(x, y, pulse * u, 0, TAU); c.fill(); } }
+  // Fundstücke (wenige fehlend)
+  for (let t = 0; t < COLL.length; t++) if (collMarked(t)) for (const i of collLeft(t)) { const [x, y] = P(_mv.set(W.cPos[i * 3], W.cPos[i * 3 + 1], W.cPos[i * 3 + 2])); c.font = `${13 * u}px sans-serif`; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillStyle = '#ffd23f'; c.strokeStyle = '#14202b'; c.lineWidth = 2 * u; c.beginPath(); c.arc(x, y, 5 * u, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#14202b'; c.fillText('✦', x, y + 0.5 * u); }
   // Roombas
   for (const r of RB.list) { const [x, y] = P(r.p); c.fillStyle = r.carry && r.carry.length ? '#ffb347' : '#ffffff'; c.strokeStyle = '#14202b'; c.lineWidth = 1 * u; c.beginPath(); c.arc(x, y, 2.6 * u, 0, TAU); c.fill(); c.stroke(); }
   // Kehrmaschine
@@ -4593,16 +4615,26 @@ function updateLobby(dt) {
   STR.lobbyDirty = false;
 }
 // ---------------- Sammlung im Menü ----------------
+// Fundstücke auf der Karte zeigen: Serien mit höchstens 5 fehlenden Teilen, ab 95 % Sauberkeit alles
+const collLeft = (t) => { const L = []; for (let i = 0; i < COLL_N; i++) if (!G.coll[i] && W.cType[i] === t) L.push(i); return L; };
+const collMarked = (t) => { const d = COLL[t], left = d.parts - G.collCount[t]; return left > 0 && ((d.parts > 1 && left <= 5) || G.shredded / TOTAL >= 0.95); };
+function collGoto(t) {
+  let best = -1, bd = 1e9; for (const i of collLeft(t)) { const d = PL.pos.distanceToSquared(_v1.set(W.cPos[i * 3], W.cPos[i * 3 + 1], W.cPos[i * 3 + 2])); if (d < bd) { bd = d; best = i; } }
+  if (best < 0) return; MAP.wp = new THREE.Vector3(W.cPos[best * 3], W.cPos[best * 3 + 1], W.cPos[best * 3 + 2]); closePanel();
+  toast(`📍 Nächstes Fundstück: ${fmt(Math.sqrt(bd))} m – folge dem Kompass`, 'good');
+}
 function openCollection() {
   const rows = COLL.map((d, t) => {
     const have = G.collCount[t], done = have >= d.parts;
     const title = done ? collName(d) : (d.parts === 1 ? '???' : '???');
     const sub = d.parts === 1 ? (done ? 'gefunden' : 'noch nicht gefunden') : `${d.n}: ${fmt(have)}/${fmt(d.parts)}`;
     const bar = d.parts > 1 ? `<div class="bar"><i style="width:${have / d.parts * 100}%"></i></div>` : '';
-    return `<div class="achRow ${done ? 'got' : ''}"><div class="medal">${done ? '🏆' : '❔'}</div><div class="tx"><div class="nm">${title}</div><div class="ds">${sub}</div>${bar}</div></div>`;
+    const go = !done && collMarked(t) ? `<button class="btn sec" data-cgo="${t}" style="padding:6px 10px;font-size:13px;margin-left:6px">📍 Zeigen</button>` : '';
+    return `<div class="achRow ${done ? 'got' : ''}"><div class="medal">${done ? '🏆' : '❔'}</div><div class="tx"><div class="nm">${title}</div><div class="ds">${sub}${collMarked(t) && !done ? ' · auf der Karte markiert' : ''}</div>${bar}</div>${go}</div>`;
   }).join('');
   showPanel('coll', 'Sammlung', `<div class="small" style="margin-bottom:8px">Fundstücke liegen überall auf Blühonia herum – sie zählen nicht zu den 100.000 Müllteilen und bringen kein Geld. Ausgestellt werden sie in der Lobby des Resorts.</div>${rows}`);
   $('#panelExtra').innerHTML = `🏆 ${collTotalDone()}/${COLL.length}`;
+  for (const b of document.querySelectorAll('[data-cgo]')) b.onclick = () => collGoto(+b.dataset.cgo);
 }
 
 boot();
