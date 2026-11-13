@@ -169,8 +169,9 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 .achRow.got{opacity:1;background:rgba(255,210,63,.1);border:1px solid rgba(255,210,63,.35)}
 .achRow:not(.got) .medal{background:#3a4756;filter:grayscale(1)}
 .achRow .tx{flex:1;min-width:0}.achRow .nm{font-size:15px}.achRow .ds{font-size:12px;opacity:.8}.achRow .rw{font-size:12px;color:#ffd23f;white-space:nowrap}
-#radio{position:fixed;left:calc(var(--sl) + 10px);bottom:calc(var(--sb) + 150px);z-index:44;display:flex;gap:10px;align-items:center;max-width:min(340px,44vw);background:rgba(18,24,40,.92);border:2px solid #ff8a7a;border-radius:18px;padding:8px 12px 8px 8px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
-#radio.rin{animation:rin .35s ease-out}
+#radio{position:fixed;left:50%;transform:translateX(-50%);top:calc(var(--st) + 54px);z-index:44;display:flex;gap:10px;align-items:center;max-width:min(340px,44vw);background:rgba(18,24,40,.92);border:2px solid #ff8a7a;border-radius:18px;padding:8px 12px 8px 8px;box-shadow:0 6px 18px rgba(0,0,0,.4)}
+#radio.rin{animation:rinTop .3s ease-out}
+@keyframes rinTop{from{transform:translate(-50%,-30px);opacity:0}to{transform:translateX(-50%);opacity:1}}
 @keyframes rin{from{transform:translateX(-120%)}to{transform:none}}
 #radioFace{width:54px;height:54px;min-width:54px;border-radius:50%;overflow:hidden;border:2px solid #14202b}
 #radioFace svg{width:100%;height:100%;display:block}
@@ -2461,6 +2462,13 @@ function updateMpBadge() {
 }
 
 // ---------------- UI-Helfer ----------------
+// Benachrichtigungen untereinander stapeln: Chef-Funk, Erfolg, Toasts
+function layoutNotes() {
+  const cp = $('#compass'); let y = cp && cp.offsetParent ? cp.getBoundingClientRect().bottom + 6 : 50;
+  for (const id of ['#radio', '#achBanner']) { const el = $(id); if (!el || el.classList.contains('hidden') || !el.offsetHeight) continue; el.style.top = y + 'px'; el.style.bottom = 'auto'; y += el.offsetHeight + 6; }
+  const tb = $('#toasts'); if (tb) tb.style.top = y + 'px';
+}
+setInterval(layoutNotes, 120);
 function toast(txt, cls = '') { const t = document.createElement('div'); t.className = 'toast ' + cls; t.textContent = txt; const box = $('#toasts'); box.appendChild(t); while (box.children.length > 3) box.firstChild.remove(); setTimeout(() => t.remove(), 2600); }
 function floatCoins(txt) { const r = $('#coins').getBoundingClientRect(); const f = document.createElement('div'); f.className = 'floater'; f.innerHTML = txt.replace('🌱', '') + ' ' + CI + (txt.includes('🌱') ? ' 🌱' : ''); f.style.left = (r.left + r.width / 2 + 30) + 'px'; f.style.top = (r.bottom + 4) + 'px'; $('#floaters').appendChild(f); setTimeout(() => f.remove(), 1150); $('#coins').classList.add('bump'); setTimeout(() => $('#coins').classList.remove('bump'), 140); }
 let hintTO = 0; function showHint(txt, ms = 7000) { const h = $('#hint'); h.textContent = txt; h.classList.remove('hidden'); clearTimeout(hintTO); hintTO = setTimeout(() => h.classList.add('hidden'), ms); }
@@ -2507,14 +2515,12 @@ function openMenu() {
     <button class="btn sec" id="mColl">✨ Sammlung (${collTotalDone()}/${COLL.length})</button>
     <button class="btn sec" id="mChar">🧍 Figur wählen (${CHAR_PRESETS[myChar()].name})</button>
     <button class="btn sec" id="mStats">📊 Statistik</button>
-    ${guest ? '' : '<button class="btn sec" id="mCheat">🧪 Cheats</button>'}
     <button class="btn sec" id="mStory">📖 Die Geschichte nochmal</button>
     <button class="btn sec" id="mSet">⚙️ Einstellungen</button>
     ${guest ? '' : '<button class="btn sec" id="mExp">📤 Spielstand exportieren / importieren</button>'}
     <button class="btn sec" id="mQuit">🏠 ${guest ? 'Planet verlassen' : 'Speichern & Hauptmenü'}</button></div>`);
   $('#mResume').onclick = closePanel;
   if (!guest) { $('#mSave').onclick = () => saveGame(true); $('#mInvite').onclick = hostStart; $('#mExp').onclick = openExport; }
-  if (!guest) $('#mCheat').onclick = openCheats;
   $('#mChar').onclick = openCharPanel;
   $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements; $('#mColl').onclick = openCollection;
   $('#mStory').onclick = () => { closePanel(); G.running = false; $('#hud').classList.add('hidden'); showStory(() => { G.running = true; $('#hud').classList.remove('hidden'); }); };

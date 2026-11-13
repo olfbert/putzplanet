@@ -13,7 +13,6 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Shop-Angebot: Behälter, Besen, Schuhe, Greifweite, Turbo, Roombas (mit Motor-, Tank- und Funk-Upgrades), Mini-Schredder
 - Roombas lassen sich aufheben und woanders absetzen; ist ihr Gebiet leer, ziehen sie selbst zum nächsten Schredder mit Arbeit
 - Bodenloser Korb als letzte Behälter-Stufe (fasst unendlich, 150.000 Münzen)
-- Cheats im Menü: +5.000 Münzen, Supermagnet (saugt ein Viertel des Planeten leer)
 - Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5, der Bonus wird beim Ablaufen ausgezahlt
 - Kehrmaschine „Kehrmaxx“ zum Reinsetzen (Third-Person), mit Bordschredder und Motor-Upgrades
 - Roombas sehen je nach Upgrade anders aus (5 Modelle, wachsen mit dem Tank)
