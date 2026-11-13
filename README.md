@@ -9,7 +9,7 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Kugelplanet mit Hügeln, Seen, Wäldern, Wiesen und Felsen – rundherum begehbar, ohne dass man die Wölbung merkt
 - Aufheben, Fegen, Werfen; Schreddi 3000 zahlt pro Teil Münzen
 - Putz-Markt neben Schreddi (und Automaten an jedem Mini-Schredder): nur dort wird eingekauft
-- Resort „Hotel Blühonia“ mit Pool, das mit dem Fortschritt öffnet und Gäste bekommt
+- Resort „Hotel Blühonia“ auf drei Ebenen: Promenade, Poolterrasse mit versenktem Becken und Sonnendeck – beide über Außentreppen begehbar; öffnet mit dem Fortschritt und bekommt Gäste
 - Shop-Angebot: Behälter, Besen, Schuhe, Greifweite, Turbo, Roombas (mit Motor-, Tank- und Funk-Upgrades), Mini-Schredder
 - Roombas lassen sich aufheben und woanders absetzen; ist ihr Gebiet leer, ziehen sie selbst zum nächsten Schredder mit Arbeit
 - Bodenloser Korb als letzte Behälter-Stufe (fasst unendlich, 150.000 Münzen)

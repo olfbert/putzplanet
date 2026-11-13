@@ -559,8 +559,28 @@ function surf(v, lift = 0) { const l = v.length(); let h = groundH(v.x, v.y, v.z
 // Begehbare Plattform von Resort/Laden
 function structFloorH(x, y, z) {
   const L = W.structs; if (!L || !L.length) return -1e9; let best = -1e9;
-  for (const st of L) { if (!st.floor) continue; const e = rockEdge(st, x, y, z); if (e.d < e.edge + 0.12 && e.edge > 0) best = Math.max(best, st.floorH); }
+  for (const st of L) { if (!st.floor) continue; const e = rockEdge(st, x, y, z); if (e.d < e.edge + 0.12 && e.edge > 0) best = Math.max(best, st.floorH + deckLift(st, x, y, z)); }
   return best;
+}
+// Lokale Koordinaten (x nach rechts, z nach vorne) eines Weltpunkts auf dem Bauwerk
+const _sl = [0, 0];
+function structLocal(st, x, y, z, out) {
+  const l = Math.hypot(x, y, z) || 1, s = (R + st.floorH) / l;
+  const px = x * s - st.x, py = y * s - st.y, pz = z * s - st.z;
+  out[0] = px * st.ax[0] + py * st.ax[1] + pz * st.ax[2];
+  out[1] = px * st.az[0] + py * st.az[1] + pz * st.az[2];
+  return out;
+}
+// Erhöhte Decks und Treppen auf einem Bauwerk
+function deckLift(st, x, y, z) {
+  const D = st.decks; if (!D) return 0;
+  structLocal(st, x, y, z, _sl); const lx = _sl[0], lz = _sl[1]; let h = 0;
+  for (const d of D) {
+    if (lx < d.x0 || lx > d.x1 || lz < d.z0 || lz > d.z1) continue;
+    const v = d.h !== undefined ? d.h : d.h0 + (d.h1 - d.h0) * clamp((lx - d.x0) / (d.x1 - d.x0), 0, 1);
+    if (v > h) h = v;
+  }
+  return h;
 }
 
 // ---------------- Abflachungs-Shader (Planet wirkt flach) ----------------
@@ -796,6 +816,16 @@ function colorByY(g, fn) { const p = g.attributes.position, c = g.attributes.col
 function ground(g) { g.computeBoundingBox(); g.translate(0, -g.boundingBox.min.y, 0); return g; }
 function M(parts, post) { const g = mergeGeometries(parts); if (post) post(g); return g; }
 const Bx = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+// Bauwerke: große Quader fein unterteilen (der Krümmungs-Shader biegt nur Eckpunkte – lange Flächen würden sonst schweben)
+const bxSeg = (v) => Math.min(24, Math.max(1, Math.ceil(Math.abs(v) / 1.25)));
+function tessBox(geo) {
+  if (geo.type !== 'BoxGeometry') return geo; const p = geo.parameters;
+  if (Math.max(p.width, p.height, p.depth) <= 1.25) return geo;
+  geo.dispose(); return new THREE.BoxGeometry(p.width, p.height, p.depth, bxSeg(p.width), bxSeg(p.height), bxSeg(p.depth));
+}
+// Absenkung einer Tangentialebene auf die Kugel (lokale Bauwerks-Koordinaten)
+const sDrop = (x, z) => (x * x + z * z) / (2 * R);
+function sphereDrop(geo) { const a = geo.attributes.position; for (let i = 0; i < a.count; i++) a.setY(i, a.getY(i) - sDrop(a.getX(i), a.getZ(i))); a.needsUpdate = true; geo.computeVertexNormals(); return geo; }
 const Cy = (rt, rb, h, s = 10) => new THREE.CylinderGeometry(rt, rb, h, s);
 const Sp = (r, w = 8, h = 6) => new THREE.SphereGeometry(r, w, h);
 const W_ = 0xffffff;
@@ -1074,18 +1104,31 @@ function rockEdge(r, x, y, z) {
 }
 // ---------------- Bauwerke: Resort & Putz-Markt ----------------
 function rectPoly(w, d) { const p = new Float32Array(RNS); for (let k = 0; k < RNS; k++) { const a = (k + 0.5) / RNS * TAU, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a)); p[k] = Math.min(c > 1e-6 ? w / 2 / c : 1e9, s > 1e-6 ? d / 2 / s : 1e9); } return p; }
+// Ebenen des Resorts (lokale Koordinaten): Poolterrasse und Sonnendeck, je mit Außentreppe
+const PDECK = { x0: -11.1, x1: 2.3, z0: -0.2, z1: 7.9, h: 1.3 };
+const PSTAIR = { x0: 2.3, x1: 4.9, z0: 1.2, z1: 3.0 };   // steigt von +x nach -x
+const DECK = { x0: 6.3, x1: 11.2, z0: -0.6, z1: 8.0, h: 2.4 };
+const STAIR = { x0: 2.5, x1: 6.3, z0: 5.4, z1: 7.2 };
 // Bauwerk an Richtung dir, Vorderseite (+z) zeigt auf 'face' (Einheitsvektor)
 function makeStruct(kind, dir, face, w, d) {
   const n = new THREE.Vector3(dir[0], dir[1], dir[2]).normalize();
   const f = new THREE.Vector3().subVectors(face, n).addScaledVector(n, -face.clone().sub(n).dot(n)); if (f.lengthSq() < 1e-8) f.copy(tangentOf(n)); f.normalize();
   const x = new THREE.Vector3().crossVectors(n, f);
   let hMax = -1e9, hMin = 1e9; const q = new THREE.Vector3();
-  for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) { q.copy(n).addScaledVector(x, i / 2 * w / 2 / R).addScaledVector(f, j / 2 * d / 2 / R).normalize(); const h = groundH(q.x, q.y, q.z); hMax = Math.max(hMax, h); hMin = Math.min(hMin, h); }
+  for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) { q.copy(n).addScaledVector(x, i / 6 * w / 2 / R).addScaledVector(f, j / 6 * d / 2 / R).normalize(); const h = groundH(q.x, q.y, q.z); hMax = Math.max(hMax, h); hMin = Math.min(hMin, h); }
   const top = R + hMax + 0.08, p = n.clone().multiplyScalar(top);
   const st = { kind, x: p.x, y: p.y, z: p.z, n: [n.x, n.y, n.z], ax: [x.x, x.y, x.z], az: [f.x, f.y, f.z], f: [f.x, f.y, f.z], s: 1, poly: rectPoly(w, d), maxR: Math.hypot(w, d) / 2, w, d, hMin, hMax, tall: kind === 'resort', cf: 1, floor: true, floorH: hMax + 0.08 };
   const sub = (lx, lz, bw, bd) => { const q = new THREE.Vector3(p.x, p.y, p.z).addScaledVector(x, lx).addScaledVector(f, lz); return { x: q.x, y: q.y, z: q.z, n: st.n, ax: st.ax, az: st.az, w: bw, d: bd, maxR: Math.hypot(bw, bd) / 2, s: 1, cf: 1 }; };
   if (kind === 'resort') { // Lobby ist begehbar: Wände mit Türöffnung + Pool
-    st.blockers = [sub(-2, -7.6, 14, 0.4), sub(-8.8, -4.8, 0.4, 6), sub(4.8, -4.8, 0.4, 6), sub(-6.1, -2.0, 5.8, 0.4), sub(2.1, -2.0, 5.8, 0.4), sub(-4, 3.6, 9.8, 5.2)];
+    st.blockers = [sub(-2, -7.6, 14, 0.4), sub(-8.8, -4.8, 0.4, 6), sub(4.8, -4.8, 0.4, 6), sub(-6.1, -2.0, 5.8, 0.4), sub(2.1, -2.0, 5.8, 0.4), sub(-3.8, 3.85, 9.9, 6.0),
+      // Poolterrasse: Brüstung rundum, Lücke nur an der Treppe
+      sub((PDECK.x0 + PDECK.x1) / 2, PDECK.z0, PDECK.x1 - PDECK.x0, 0.3), sub((PDECK.x0 + PDECK.x1) / 2, PDECK.z1, PDECK.x1 - PDECK.x0, 0.3), sub(PDECK.x0, (PDECK.z0 + PDECK.z1) / 2, 0.3, PDECK.z1 - PDECK.z0),
+      sub(PDECK.x1, (PDECK.z0 + PSTAIR.z0) / 2, 0.3, PSTAIR.z0 - PDECK.z0), sub(PDECK.x1, (PSTAIR.z1 + PDECK.z1) / 2, 0.3, PDECK.z1 - PSTAIR.z1),
+      // Sonnendeck: dito
+      sub(8.75, DECK.z0, DECK.x1 - DECK.x0, 0.3), sub(8.75, DECK.z1, DECK.x1 - DECK.x0, 0.3), sub(DECK.x1, 3.7, 0.3, DECK.z1 - DECK.z0),
+      sub(DECK.x0, (DECK.z0 + STAIR.z0) / 2, 0.3, STAIR.z0 - DECK.z0), sub(DECK.x0, (STAIR.z1 + DECK.z1) / 2, 0.3, DECK.z1 - STAIR.z1)];
+    st.decks = [{ x0: DECK.x0, x1: DECK.x1, z0: DECK.z0, z1: DECK.z1, h: DECK.h }, { x0: STAIR.x0, x1: STAIR.x1, z0: STAIR.z0, z1: STAIR.z1, h0: 0, h1: DECK.h },
+      { x0: PDECK.x0, x1: PDECK.x1, z0: PDECK.z0, z1: PDECK.z1, h: PDECK.h }, { x0: PSTAIR.x0, x1: PSTAIR.x1, z0: PSTAIR.z0, z1: PSTAIR.z1, h0: PDECK.h, h1: 0 }];
     st.door = sub(-2, -2.0, 2.4, 0.4);
   } else st.blockers = [st];
   return st;
@@ -2799,7 +2842,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3777,33 +3820,49 @@ function sObj(st) { return { p: new THREE.Vector3(st.x, st.y, st.z), n: new THRE
 function localToWorld(o, lx, ly, lz, out = new THREE.Vector3()) { return out.copy(o.p).addScaledVector(o.x, lx).addScaledVector(o.n, ly).addScaledVector(o.f, lz); }
 
 // ---------- Bausteine ----------
-function adder(g) { return (geo, mat, ...o) => { ops(geo, o); const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; g.add(m); return m; }; }
-function palm(add, x, z, h, lean) {
+// root=true: Teil liegt direkt in der Bauwerksgruppe -> fein unterteilen und der Kugel anpassen (wie die Bodenphysik)
+function adder(g, root = false) { return (geo, mat, ...o) => { if (root) geo = tessBox(geo); ops(geo, o); if (root) sphereDrop(geo); const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; g.add(m); return m; }; }
+function palm(add, x, z, h, lean, y0 = 0) {
   const trunk = lamb(0x9c7a4f), leaf = lamb(0x3f9a3a), coco = lamb(0x6b4a2b);
-  let px = x, py = 0, pz = z;
+  let px = x, py = y0, pz = z;
   for (let k = 0; k < 6; k++) { const seg = h / 6; add(Cy(0.17 - k * 0.015, 0.2 - k * 0.015, seg * 1.05, 7), trunk, ['rz', -lean * 0.5], ['t', px, py + seg / 2, pz]); px += Math.sin(lean) * seg * 0.35; py += seg; }
   for (let k = 0; k < 7; k++) { const a = k / 7 * TAU; add(Bx(0.45, 0.05, 2.0), leaf, ['t', 0, 0, 1.0], ['rx', 0.45], ['ry', a], ['t', px, py, pz]); }
   for (let k = 0; k < 3; k++) add(Sp(0.13, 6, 5), coco, ['t', px + Math.cos(k * 2.1) * 0.2, py - 0.15, pz + Math.sin(k * 2.1) * 0.2]);
 }
-// Liege: Kopfende bei -z (Rückenlehne), Fußende bei +z
-function makeLounger(parent, x, z, rot, towelC) {
-  const lg = new THREE.Group(); lg.position.set(x, 0.06, z); lg.rotation.y = rot; parent.add(lg); const add = adder(lg);
-  const frame = lamb(0xf7f7f7), cushion = lamb(0xfafafa), towel = lamb(towelC), leg = lamb(0xb8bec6);
-  for (const sx of [-0.32, 0.32]) { add(Bx(0.05, 0.05, 1.32), frame, ['t', sx, 0.31, 0.32]); add(Bx(0.05, 0.31, 0.05), leg, ['t', sx, 0.155, 0.92]); add(Bx(0.05, 0.31, 0.05), leg, ['t', sx, 0.155, -0.28]); }
-  add(Bx(0.62, 0.08, 1.26), cushion, ['t', 0, 0.37, 0.32]); add(Bx(0.54, 0.014, 1.16), towel, ['t', 0, 0.418, 0.34]);
-  const back = new THREE.Group(); back.position.set(0, 0.37, -0.3); back.rotation.x = 0.61; lg.add(back); const addB = adder(back);
-  addB(Bx(0.62, 0.08, 0.76), cushion, ['t', 0, 0, -0.38]); addB(Bx(0.54, 0.014, 0.66), towel, ['t', 0, 0.047, -0.36]);
-  addB(Sp(0.13, 10, 8), lamb(0xffffff), ['s', 1.6, 0.45, 0.8], ['t', 0, 0.08, -0.62]);
-  for (const sx of [-0.3, 0.3]) add(Bx(0.04, 0.4, 0.04), leg, ['rx', -0.5], ['t', sx, 0.24, -0.62]);
+// Liege: Kopfende bei -z (Rückenlehne), Fußende bei +z. Sitzfläche bei y≈0.58
+function makeLounger(parent, x, z, rot, towelC, y0 = 0) {
+  const lg = new THREE.Group(); lg.position.set(x, y0 + 0.06 - sDrop(x, z), z); lg.rotation.y = rot; parent.add(lg); const add = adder(lg);
+  const teak = lamb(0xb9814c), cushion = lamb(0xf3f5f7), towel = lamb(towelC), leg = lamb(0x8d6239);
+  // Gestell + Beine (Holz, hebt sich vom hellen Boden ab)
+  for (const sx of [-0.38, 0.38]) {
+    add(Bx(0.07, 0.07, 1.62), teak, ['t', sx, 0.46, 0.42]);
+    add(Bx(0.07, 0.46, 0.07), leg, ['t', sx, 0.23, 1.12]); add(Bx(0.07, 0.46, 0.07), leg, ['t', sx, 0.23, -0.3]);
+    add(Bx(0.05, 0.05, 1.3), leg, ['t', sx, 0.1, 0.42]);
+  }
+  add(Bx(0.84, 0.06, 1.56), teak, ['t', 0, 0.5, 0.42]);              // Lattenrost
+  add(Bx(0.78, 0.1, 1.5), cushion, ['t', 0, 0.58, 0.42]);            // Matratze
+  add(Bx(0.66, 0.02, 1.2), towel, ['t', 0, 0.64, 0.5]);              // Handtuch
+  // Rückenlehne: steigt mit 0.61 rad nach hinten an
+  const back = new THREE.Group(); back.position.set(0, 0.53, -0.38); back.rotation.x = 0.61; lg.add(back); const addB = adder(back);
+  addB(Bx(0.84, 0.06, 0.92), teak, ['t', 0, 0, -0.46]);
+  addB(Bx(0.78, 0.1, 0.88), cushion, ['t', 0, 0.08, -0.46]);
+  addB(Bx(0.66, 0.02, 0.6), towel, ['t', 0, 0.14, -0.4]);
+  addB(Sp(0.15, 10, 8), lamb(0xffffff), ['s', 1.7, 0.5, 0.9], ['t', 0, 0.17, -0.78]);  // Kissen
+  for (const sx of [-0.36, 0.36]) addB(Bx(0.06, 0.06, 0.9), teak, ['t', sx, 0.02, -0.45]);
+  for (const sx of [-0.36, 0.36]) add(Bx(0.05, 0.52, 0.05), leg, ['rx', -0.55], ['t', sx, 0.3, -0.72]);
   return lg;
 }
 // ---------- Resort ----------
 function buildResort(st) {
-  const g = new THREE.Group(); g.matrixAutoUpdate = false; const add = adder(g);
+  const g = new THREE.Group(); g.matrixAutoUpdate = false; const add = adder(g, true);
   const sand = lamb(0xe8d3a8), tile = lamb(0xf6ecd6), coral = lamb(0xff9a8b), cream = lamb(0xfff4e0), white = lamb(0xffffff), glass = lamb(0x2b4a6b), rail = lamb(0xffffff), wing = lamb(0xffd6a5), blue = lamb(0x5ab4ff), wood = lamb(0xa0703c);
   const depth = st.hMax - st.hMin + 2.5;
-  add(Bx(st.w, depth, st.d), sand, ['t', 0, -depth / 2, 0]);
-  add(Bx(st.w - 0.4, 0.06, st.d - 0.4), tile, ['t', 0, 0.03, 0]);
+  // Quader über lokale Kanten: slab(x0,x1,z0,z1,y0,y1,mat)
+  const slab = (x0, x1, z0, z1, y0, y1, mat) => add(Bx(x1 - x0, y1 - y0, z1 - z0), mat, ['t', (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2]);
+  // Terrasse
+  const WX = st.w / 2, WZ = st.d / 2;
+  slab(-WX, WX, -WZ, WZ, -depth, 0, sand);
+  slab(-WX + 0.2, WX - 0.2, -WZ + 0.2, WZ - 0.2, 0, 0.07, tile);
   // Hauptgebäude
   add(Bx(14, 6, 6), coral, ['t', -2, 6, -4.8]);                       // Obergeschosse
   add(Bx(14, 3, 0.4), coral, ['t', -2, 1.5, -7.6]);                   // Erdgeschoss: Wände mit Türöffnung
@@ -3833,25 +3892,68 @@ function buildResort(st) {
   add(Bx(0.15, 1.2, 0.15), white, ['t', -5.5, 9.9, -2.4]); add(Bx(0.15, 1.2, 0.15), white, ['t', 1.5, 9.9, -2.4]);
   // Fahne (weht ab 100 %)
   add(Cy(0.05, 0.05, 3, 6), white, ['t', 4.2, 10.9, -6.5]);
-  const flag = add(Bx(1.4, 0.8, 0.03), lamb(0x7bd389), ['t', 0.7, 0, 0]); flag.position.set(4.2, 12, -6.5);
-  // Pool
-  for (const [w, d, x, z] of [[9.8, 0.3, -4, 1.15], [9.8, 0.3, -4, 6.05], [0.3, 5.2, -8.75, 3.6], [0.3, 5.2, 0.75, 3.6]]) add(Bx(w, 0.75, d), white, ['t', x, 0.375, z]);
-  const poolFloor = add(Bx(9.2, 0.04, 4.6), lamb(0x9fdcf0), ['t', -4, 0.08, 3.6]);
-  const water = add(Bx(9.2, 0.05, 4.6), flatPatch(new THREE.MeshLambertMaterial({ color: 0x35c3e8, emissive: 0x0b4a63, transparent: true, opacity: 0.85 })), ['t', -4, 0.62, 3.6]);
-  add(Bx(0.08, 1.0, 0.08), white, ['t', 0.6, 0.6, 1.4]); add(Bx(0.08, 1.0, 0.08), white, ['t', 0.6, 0.6, 1.9]);
+  const flag = add(Bx(1.4, 0.8, 0.03), lamb(0x7bd389), ['t', 0.7, 0, 0]); flag.position.set(4.2, 12 - sDrop(4.2, -6.5), -6.5);
+  // ---- Zwei erhöhte Ebenen: Poolterrasse (1.3) und Sonnendeck (2.4), je mit Außentreppe ----
+  const plank = lamb(0xc89a63), joint = lamb(0xb88552), post = lamb(0xffffff), step2 = lamb(0xd4a870), ptile = lamb(0x7fd2ea), pdeep = lamb(0x4fb6d8);
+  const PX0 = -8.2, PX1 = 0.6, PZ0 = 1.4, PZ1 = 6.3;                       // Beckenkante im Deck
+  const PTOP = PDECK.h + 0.08, DT = DECK.h + 0.08, PFLOOR = 0.2;           // Oberkanten + Beckenboden
+  const podium = (D, top, hole) => {
+    const parts = hole ? [[D.x0, hole[0], D.z0, D.z1], [hole[1], D.x1, D.z0, D.z1], [hole[0], hole[1], D.z0, hole[2]], [hole[0], hole[1], hole[3], D.z1]] : [[D.x0, D.x1, D.z0, D.z1]];
+    for (const [a, b, c2, d2] of parts) { slab(a, b, c2, d2, 0, D.h, sand); slab(a, b, c2, d2, D.h, top, plank); }
+    for (const [a, b, c2, d2] of [[D.x0 - 0.07, D.x0, D.z0, D.z1], [D.x1, D.x1 + 0.07, D.z0, D.z1], [D.x0, D.x1, D.z0 - 0.07, D.z0], [D.x0, D.x1, D.z1, D.z1 + 0.07]]) slab(a, b, c2, d2, 0.04, 0.3, tile);
+    for (const [a, b, c2, d2] of [[D.x0 - 0.12, D.x1 + 0.12, D.z0 - 0.12, D.z0 + 0.1], [D.x0 - 0.12, D.x1 + 0.12, D.z1 - 0.1, D.z1 + 0.12], [D.x0 - 0.12, D.x0 + 0.1, D.z0, D.z1], [D.x1 - 0.1, D.x1 + 0.12, D.z0, D.z1]]) slab(a, b, c2, d2, D.h - 0.12, D.h, cream);
+    for (let z = D.z0 + 0.8; z < D.z1 - 0.3; z += 0.8) { if (hole && z > hole[2] - 0.2 && z < hole[3] + 0.1) continue; slab(D.x0 + 0.1, D.x1 - 0.1, z, z + 0.06, top, top + 0.015, joint); }
+  };
+  podium(PDECK, PTOP, [PX0 - 0.55, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55]);
+  podium(DECK, DT, null);
+  // Poolbecken im Podest
+  slab(PX0 - 0.55, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55, 0, PFLOOR, pdeep);
+  for (const [a, b, c2, d2] of [[PX0 - 0.55, PX0, PZ0 - 0.55, PZ1 + 0.55], [PX1, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55], [PX0, PX1, PZ0 - 0.55, PZ0], [PX0, PX1, PZ1, PZ1 + 0.55]]) slab(a, b, c2, d2, PFLOOR, PTOP, ptile);
+  const poolFloor = slab(PX0, PX1, PZ0, PZ1, PFLOOR, PFLOOR + 0.05, ptile);
+  for (const [a, b, c2, d2] of [[PX0 - 0.95, PX1 + 0.95, PZ0 - 0.95, PZ0 - 0.55], [PX0 - 0.95, PX1 + 0.95, PZ1 + 0.55, PZ1 + 0.95], [PX0 - 0.95, PX0 - 0.55, PZ0 - 0.55, PZ1 + 0.55], [PX1 + 0.55, PX1 + 0.95, PZ0 - 0.55, PZ1 + 0.55]]) slab(a, b, c2, d2, PTOP, PTOP + 0.06, white); // Beckenrand
+  const water = slab(PX0, PX1, PZ0, PZ1, PFLOOR + 0.04, PTOP - 0.22, flatPatch(new THREE.MeshLambertMaterial({ color: 0x35c3e8, emissive: 0x0b4a63, transparent: true, opacity: 0.8 })));
+  for (const sz of [PZ1 - 1.4, PZ1 - 0.8]) add(Bx(0.07, PTOP - PFLOOR + 0.5, 0.07), white, ['t', PX1 - 0.18, (PFLOOR + PTOP + 0.5) / 2, sz]);   // Leiter
+  for (let k = 0; k < 3; k++) add(Bx(0.07, 0.07, 0.68), white, ['t', PX1 - 0.18, PTOP - 0.35 - k * 0.38, PZ1 - 1.1]);
+  for (const sz of [PZ1 - 1.4, PZ1 - 0.8]) add(Bx(0.07, 0.07, 0.55), white, ['rx', 0.55], ['t', PX1 - 0.18, PTOP + 0.55, sz + 0.18]);
+  // Treppen
+  const buildStairs = (S, hTop, dir) => {
+    const N = Math.max(4, Math.round(hTop / 0.32)), sr = hTop / N, sd = (S.x1 - S.x0) / N;
+    for (let k = 0; k < N; k++) {
+      const h = 0.04 + (k + 1) * sr, a = dir > 0 ? S.x0 + k * sd : S.x1 - (k + 1) * sd;
+      slab(a - 0.02, a + sd + 0.02, S.z0, S.z1, h - sr - 0.02, h, k % 2 ? plank : step2);
+      slab(a, a + sd, S.z0, S.z1, 0, h - sr, sand);
+    }
+    for (const sz of [S.z0 - 0.12, S.z1 + 0.12]) {
+      for (let k = 0; k <= N; k += 2) { const h = 0.04 + k * sr, xx = dir > 0 ? S.x0 + k * sd : S.x1 - k * sd; add(Bx(0.08, 0.95, 0.08), post, ['t', xx, h + 0.47, sz]); }
+      add(Bx(Math.hypot(S.x1 - S.x0, hTop) + 0.2, 0.09, 0.09), post, ['rz', dir * Math.atan2(hTop, S.x1 - S.x0)], ['t', (S.x0 + S.x1) / 2, 0.04 + hTop / 2 + 0.95, sz]);
+    }
+  };
+  buildStairs(PSTAIR, PDECK.h, -1); buildStairs(STAIR, DECK.h, 1);
+  // Brüstungen (Lücke jeweils an der Treppe)
+  const railSeg = (top, a, b, c2, d2) => {
+    const horiz = Math.abs(b - a) > Math.abs(d2 - c2), len = horiz ? b - a : d2 - c2, n = Math.max(2, Math.round(len / 1.05));
+    for (let k = 0; k <= n; k++) { const t2 = k / n; add(Bx(0.08, 0.95, 0.08), post, ['t', horiz ? a + (b - a) * t2 : a, top + 0.47, horiz ? c2 : c2 + (d2 - c2) * t2]); }
+    add(horiz ? Bx(len, 0.08, 0.08) : Bx(0.08, 0.08, len), post, ['t', horiz ? (a + b) / 2 : a, top + 0.95, horiz ? c2 : (c2 + d2) / 2]);
+  };
+  railSeg(DT, DECK.x0, DECK.x1, DECK.z0, DECK.z0); railSeg(DT, DECK.x0, DECK.x1, DECK.z1, DECK.z1);
+  railSeg(DT, DECK.x1, DECK.x1, DECK.z0, DECK.z1);
+  railSeg(DT, DECK.x0, DECK.x0, DECK.z0, STAIR.z0); railSeg(DT, DECK.x0, DECK.x0, STAIR.z1, DECK.z1);
+  railSeg(PTOP, PDECK.x0, PDECK.x1, PDECK.z0, PDECK.z0); railSeg(PTOP, PDECK.x0, PDECK.x1, PDECK.z1, PDECK.z1);
+  railSeg(PTOP, PDECK.x0, PDECK.x0, PDECK.z0, PDECK.z1);
+  railSeg(PTOP, PDECK.x1, PDECK.x1, PDECK.z0, PSTAIR.z0); railSeg(PTOP, PDECK.x1, PDECK.x1, PSTAIR.z1, PDECK.z1);
   // Liegen, Schirme, Palmen
   const TOW = [0x5ab4ff, 0xff6b6b, 0xffd23f, 0x7bd389, 0xc77dff, 0xff9f1c, 0x2ec4b6];
   const loungers = [];
-  for (let k = 0; k < 4; k++) loungers.push(makeLounger(g, 2.6 + k * 1.3, 4.5, Math.PI, TOW[k]));
-  for (let k = 0; k < 3; k++) loungers.push(makeLounger(g, -8.6 + k * 2.4, 7.25, Math.PI, TOW[k + 4]));
+  for (let k = 0; k < 4; k++) loungers.push(makeLounger(g, 7.2 + k * 1.25, 4.8, Math.PI, TOW[k], DT));
+  for (let k = 0; k < 3; k++) loungers.push(makeLounger(g, -9.9, 1.6 + k * 2.1, Math.PI / 2, TOW[k + 4], PTOP));
   const umbrellas = [];
-  for (const [x, z, col] of [[3.2, 6.6, 0xff6b6b], [5.8, 6.6, 0x5ab4ff], [-6, 0.4, 0xffd23f]]) {
-    add(Cy(0.04, 0.04, 2.4, 6), white, ['t', x, 1.2, z]);
-    const open = add(new THREE.ConeGeometry(1.4, 0.55, 10, 1, true), lamb(col, { side: THREE.DoubleSide }), ['t', x, 2.35, z]);
-    const closed = add(new THREE.ConeGeometry(0.18, 1.3, 8), lamb(col), ['rx', Math.PI], ['t', x, 1.9, z]);
+  for (const [x, z, col, y0] of [[-9.9, 7.3, 0xff6b6b, PTOP], [9.4, 1.4, 0x5ab4ff, DT], [0.0, 7.3, 0xffd23f, PTOP]]) {
+    add(Cy(0.04, 0.04, 2.4, 6), white, ['t', x, y0 + 1.2, z]);
+    const open = add(new THREE.ConeGeometry(1.4, 0.55, 10, 1, true), lamb(col, { side: THREE.DoubleSide }), ['t', x, y0 + 2.35, z]);
+    const closed = add(new THREE.ConeGeometry(0.18, 1.3, 8), lamb(col), ['rx', Math.PI], ['t', x, y0 + 1.9, z]);
     umbrellas.push([open, closed]);
   }
-  palm(add, -10.2, 6.8, 5.2, 0.3); palm(add, 10.2, 7.2, 4.6, -0.25); palm(add, -10, -1.2, 5.6, 0.15); palm(add, 4.8, 1.0, 4.2, -0.35);
+  palm(add, -10.4, 6.9, 4.6, 0.3, PTOP); palm(add, 9.9, 7.2, 4.0, -0.25, DT); palm(add, -10.2, -1.2, 5.6, 0.15); palm(add, 5.6, 0.1, 4.2, -0.35);
   // Geländer um die Terrasse
   for (let k = 0; k <= 22; k++) { add(Bx(0.08, 0.9, 0.08), rail, ['t', -11.3 + k * 1.03, 0.45, 8.3]); }
   add(Bx(st.w - 0.4, 0.07, 0.07), rail, ['t', 0, 0.9, 8.3]);
@@ -3870,7 +3972,7 @@ function buildResort(st) {
   let li = 0, si = 0, wi = 0;
   order.forEach((kind, i) => {
     const c = makeChar(guestSpec(gs + i, kind)); c.g.visible = false;
-    if (kind === 'lie') { const lg = loungers[li++]; lg.add(c.g); const phi = -0.96; c.g.rotation.x = phi; c.g.position.set(0, 0.5 - 0.88 * Math.cos(phi), -0.2 - 0.88 * Math.sin(phi)); }
+    if (kind === 'lie') { const lg = loungers[li++]; lg.add(c.g); const phi = -0.96, hipY = 0.74, hipZ = -0.38; c.g.rotation.x = phi; c.g.position.set(0, hipY - 0.88 * Math.cos(phi), hipZ - 0.88 * Math.sin(phi)); }
     else g.add(c.g);
     guests.push({ c, kind, idx: kind === 'swim' ? si++ : kind === 'walk' ? wi++ : li - 1, ph: i * 1.7 });
   });
@@ -3915,21 +4017,21 @@ function updateResort(dt) {
     q.c.g.visible = want && near; if (!q.c.g.visible) continue;
     if (q.kind === 'lie') animChar(q.c, 'lie', tt);
     else if (q.kind === 'swim') {
-      const a = tt * 0.25 + q.idx * 1.6, cx = -4 + Math.cos(q.idx * 2.3) * 2.2, cz = 3.6 + Math.sin(q.idx * 1.7) * 0.6;
-      q.c.g.position.set(cx + Math.cos(a) * 1.6, -0.6, cz + Math.sin(a) * 1.0); q.c.g.rotation.set(0, -a, 0); animChar(q.c, 'swim', tt);
+      const a = tt * 0.25 + q.idx * 1.6, cx = -3.8 + Math.cos(q.idx * 2.3) * 2.0, cz = 3.85 + Math.sin(q.idx * 1.7) * 0.5;
+      { const sx = cx + Math.cos(a) * 1.5, sz = cz + Math.sin(a) * 0.9; q.c.g.position.set(sx, 0.1 - sDrop(sx, sz), sz); } q.c.g.rotation.set(0, -a, 0); animChar(q.c, 'swim', tt);
     } else {
       const P = WALK_PATH, L = WALK_LEN, s0 = ((tt * 1.05 + q.idx * L / 4) % L + L) % L; let acc = 0;
-      for (let k = 0; k < P.length; k++) { const A = P[k], B = P[(k + 1) % P.length], seg = Math.hypot(B[0] - A[0], B[1] - A[1]); if (acc + seg >= s0) { const u = (s0 - acc) / seg; q.c.g.position.set(A[0] + (B[0] - A[0]) * u, 0.06, A[1] + (B[1] - A[1]) * u); q.c.g.rotation.set(0, Math.atan2(B[0] - A[0], B[1] - A[1]), 0); break; } acc += seg; }
+      for (let k = 0; k < P.length; k++) { const A = P[k], B = P[(k + 1) % P.length], seg = Math.hypot(B[0] - A[0], B[1] - A[1]); if (acc + seg >= s0) { const u = (s0 - acc) / seg; { const wx = A[0] + (B[0] - A[0]) * u, wz = A[1] + (B[1] - A[1]) * u; q.c.g.position.set(wx, 0.06 - sDrop(wx, wz), wz); } q.c.g.rotation.set(0, Math.atan2(B[0] - A[0], B[1] - A[1]), 0); break; } acc += seg; }
       animChar(q.c, 'walk', tt, 0.75);
     }
   }
 }
-const WALK_PATH = [[-10.2, 0.2], [9.8, 0.2], [9.8, 7.7], [1.7, 7.7], [1.7, 0.9]];
+const WALK_PATH = [[-10.6, -1.0], [5.6, -1.0], [5.6, -1.7], [-10.6, -1.7]];
 const WALK_LEN = WALK_PATH.reduce((a, A, k) => { const B = WALK_PATH[(k + 1) % WALK_PATH.length]; return a + Math.hypot(B[0] - A[0], B[1] - A[1]); }, 0);
 
 // ---------- Putz-Markt ----------
 function buildShop(st) {
-  const g = new THREE.Group(); g.matrixAutoUpdate = false; const add = adder(g);
+  const g = new THREE.Group(); g.matrixAutoUpdate = false; const add = adder(g, true);
   const base = lamb(0xbfc5c9), tile = lamb(0xe9edf1), wall = lamb(0x5ab4ff), white = lamb(0xffffff), yel = lamb(0xffd23f), red = lamb(0xe63946), dark = lamb(0x2b2f33), metal = lamb(0x9aa3ab), wood = lamb(0xc9a46c);
   const depth = st.hMax - st.hMin + 2; add(Bx(st.w, depth, st.d), base, ['t', 0, -depth / 2, 0]); add(Bx(st.w - 0.3, 0.05, st.d - 0.3), tile, ['t', 0, 0.03, 0]);
   add(Bx(5.4, 3.3, 0.3), wall, ['t', 0, 1.65, -2.0]);
@@ -4299,7 +4401,7 @@ function collectAround(p, rad, byName) { for (const i of collInRange(p, rad, _cf
 // ---------------- Lobby ----------------
 const PAD_X = [-7.4, -4.6, -1.8, 1.0, 3.8];
 function addLobby(g, st) {
-  const add = adder(g), wall = lamb(0xf6ecd6), floor = lamb(0xd9c7a8), trim = lamb(0xff9a8b), pad = lamb(0xe8e2d2), padTop = lamb(0xb9b2a0);
+  const add = adder(g, true), wall = lamb(0xf6ecd6), floor = lamb(0xd9c7a8), trim = lamb(0xff9a8b), pad = lamb(0xe8e2d2), padTop = lamb(0xb9b2a0);
   add(Bx(13.2, 0.07, 5.2), floor, ['t', -2, 0.035, -4.8]);
   for (let k = 0; k < 5; k++) add(Bx(2.4, 0.02, 5.0), k % 2 ? lamb(0xe6d8bd) : floor, ['t', -8 + k * 2.7, 0.08, -4.8]);
   add(Bx(13.2, 0.1, 5.2), wall, ['t', -2, 2.95, -4.8]);
@@ -4317,7 +4419,7 @@ function addLobby(g, st) {
   const pads = [];
   COLL.forEach((d, i) => {
     const row = i < 5 ? 0 : 1, x = PAD_X[i % 5], z = row ? -3.5 : -6.5;
-    const grp = new THREE.Group(); grp.position.set(x, 0.09, z); grp.rotation.y = row ? Math.PI : 0; g.add(grp); const a2 = adder(grp);
+    const grp = new THREE.Group(); grp.position.set(x, 0.09 - sDrop(x, z), z); grp.rotation.y = row ? Math.PI : 0; g.add(grp); const a2 = adder(grp);
     a2(Bx(0.82, 0.78, 0.82), pad, ['t', 0, 0.39, 0]); a2(Bx(0.92, 0.07, 0.92), padTop, ['t', 0, 0.8, 0]); a2(Bx(0.92, 0.07, 0.92), padTop, ['t', 0, 0.04, 0]);
     const signT = signTex(384, 150, () => { });
     a2(new THREE.PlaneGeometry(0.8, 0.31), flatPatch(new THREE.MeshBasicMaterial({ map: signT, transparent: true })), ['rx', -0.35], ['t', 0, 0.52, 0.44]);
