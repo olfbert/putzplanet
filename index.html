@@ -559,7 +559,10 @@ function surf(v, lift = 0) { const l = v.length(); let h = groundH(v.x, v.y, v.z
 // Begehbare Plattform von Resort/Laden
 function structFloorH(x, y, z) {
   const L = W.structs; if (!L || !L.length) return -1e9; let best = -1e9;
-  for (const st of L) { if (!st.floor) continue; const e = rockEdge(st, x, y, z); if (e.d < e.edge + 0.12 && e.edge > 0) best = Math.max(best, st.floorH + deckLift(st, x, y, z)); }
+  for (const st of L) {
+    if (!st.floor) continue; const e = rockEdge(st, x, y, z); if (e.d < e.edge + 0.12 && e.edge > 0) best = Math.max(best, st.floorH);
+    const X = st.ext; if (X) { structLocal(st, x, y, z, _sl); if (_sl[0] > X.x0 && _sl[0] < X.x1 && _sl[1] > X.z0 - 0.15 && _sl[1] < X.z1) best = Math.max(best, st.floorH - X.drop * clamp((_sl[1] - X.z0) / (X.z1 - X.z0), 0, 1)); }
+  }
   return best;
 }
 // Lokale Koordinaten (x nach rechts, z nach vorne) eines Weltpunkts auf dem Bauwerk
@@ -570,17 +573,6 @@ function structLocal(st, x, y, z, out) {
   out[0] = px * st.ax[0] + py * st.ax[1] + pz * st.ax[2];
   out[1] = px * st.az[0] + py * st.az[1] + pz * st.az[2];
   return out;
-}
-// Erhöhte Decks und Treppen auf einem Bauwerk
-function deckLift(st, x, y, z) {
-  const D = st.decks; if (!D) return 0;
-  structLocal(st, x, y, z, _sl); const lx = _sl[0], lz = _sl[1]; let h = 0;
-  for (const d of D) {
-    if (lx < d.x0 || lx > d.x1 || lz < d.z0 || lz > d.z1) continue;
-    const v = d.h !== undefined ? d.h : d.h0 + (d.h1 - d.h0) * clamp((lx - d.x0) / (d.x1 - d.x0), 0, 1);
-    if (v > h) h = v;
-  }
-  return h;
 }
 
 // ---------------- Abflachungs-Shader (Planet wirkt flach) ----------------
@@ -1104,11 +1096,9 @@ function rockEdge(r, x, y, z) {
 }
 // ---------------- Bauwerke: Resort & Putz-Markt ----------------
 function rectPoly(w, d) { const p = new Float32Array(RNS); for (let k = 0; k < RNS; k++) { const a = (k + 0.5) / RNS * TAU, c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a)); p[k] = Math.min(c > 1e-6 ? w / 2 / c : 1e9, s > 1e-6 ? d / 2 / s : 1e9); } return p; }
-// Ebenen des Resorts (lokale Koordinaten): Poolterrasse und Sonnendeck, je mit Außentreppe
-const PDECK = { x0: -11.1, x1: 2.3, z0: -0.2, z1: 7.9, h: 1.3 };
-const PSTAIR = { x0: 2.3, x1: 4.9, z0: 1.2, z1: 3.0 };   // steigt von +x nach -x
-const DECK = { x0: 6.3, x1: 11.2, z0: -0.6, z1: 8.0, h: 2.4 };
-const STAIR = { x0: 2.5, x1: 6.3, z0: 5.4, z1: 7.2 };
+// Resort (lokale Koordinaten): Poolbecken in der Terrasse, Außentreppe vorne neben dem Schild
+const POOL = { x0: -8.75, x1: 1.15, z0: 0.6, z1: 5.4 };
+const EXT = { x0: 2.4, x1: 4.8, z0: 8.5, z1: 12.3 };
 // Bauwerk an Richtung dir, Vorderseite (+z) zeigt auf 'face' (Einheitsvektor)
 function makeStruct(kind, dir, face, w, d) {
   const n = new THREE.Vector3(dir[0], dir[1], dir[2]).normalize();
@@ -1120,15 +1110,12 @@ function makeStruct(kind, dir, face, w, d) {
   const st = { kind, x: p.x, y: p.y, z: p.z, n: [n.x, n.y, n.z], ax: [x.x, x.y, x.z], az: [f.x, f.y, f.z], f: [f.x, f.y, f.z], s: 1, poly: rectPoly(w, d), maxR: Math.hypot(w, d) / 2, w, d, hMin, hMax, tall: kind === 'resort', cf: 1, floor: true, floorH: hMax + 0.08 };
   const sub = (lx, lz, bw, bd) => { const q = new THREE.Vector3(p.x, p.y, p.z).addScaledVector(x, lx).addScaledVector(f, lz); return { x: q.x, y: q.y, z: q.z, n: st.n, ax: st.ax, az: st.az, w: bw, d: bd, maxR: Math.hypot(bw, bd) / 2, s: 1, cf: 1 }; };
   if (kind === 'resort') { // Lobby ist begehbar: Wände mit Türöffnung + Pool
-    st.blockers = [sub(-2, -7.6, 14, 0.4), sub(-8.8, -4.8, 0.4, 6), sub(4.8, -4.8, 0.4, 6), sub(-6.1, -2.0, 5.8, 0.4), sub(2.1, -2.0, 5.8, 0.4), sub(-3.8, 3.85, 9.9, 6.0),
-      // Poolterrasse: Brüstung rundum, Lücke nur an der Treppe
-      sub((PDECK.x0 + PDECK.x1) / 2, PDECK.z0, PDECK.x1 - PDECK.x0, 0.3), sub((PDECK.x0 + PDECK.x1) / 2, PDECK.z1, PDECK.x1 - PDECK.x0, 0.3), sub(PDECK.x0, (PDECK.z0 + PDECK.z1) / 2, 0.3, PDECK.z1 - PDECK.z0),
-      sub(PDECK.x1, (PDECK.z0 + PSTAIR.z0) / 2, 0.3, PSTAIR.z0 - PDECK.z0), sub(PDECK.x1, (PSTAIR.z1 + PDECK.z1) / 2, 0.3, PDECK.z1 - PSTAIR.z1),
-      // Sonnendeck: dito
-      sub(8.75, DECK.z0, DECK.x1 - DECK.x0, 0.3), sub(8.75, DECK.z1, DECK.x1 - DECK.x0, 0.3), sub(DECK.x1, 3.7, 0.3, DECK.z1 - DECK.z0),
-      sub(DECK.x0, (DECK.z0 + STAIR.z0) / 2, 0.3, STAIR.z0 - DECK.z0), sub(DECK.x0, (STAIR.z1 + DECK.z1) / 2, 0.3, DECK.z1 - STAIR.z1)];
-    st.decks = [{ x0: DECK.x0, x1: DECK.x1, z0: DECK.z0, z1: DECK.z1, h: DECK.h }, { x0: STAIR.x0, x1: STAIR.x1, z0: STAIR.z0, z1: STAIR.z1, h0: 0, h1: DECK.h },
-      { x0: PDECK.x0, x1: PDECK.x1, z0: PDECK.z0, z1: PDECK.z1, h: PDECK.h }, { x0: PSTAIR.x0, x1: PSTAIR.x1, z0: PSTAIR.z0, z1: PSTAIR.z1, h0: PDECK.h, h1: 0 }];
+    st.blockers = [sub(-2, -7.6, 14, 0.4), sub(-8.8, -4.8, 0.4, 6), sub(4.8, -4.8, 0.4, 6), sub(-6.1, -2.0, 5.8, 0.4), sub(2.1, -2.0, 5.8, 0.4),
+      sub((POOL.x0 + POOL.x1) / 2, (POOL.z0 + POOL.z1) / 2, POOL.x1 - POOL.x0, POOL.z1 - POOL.z0)];
+    // Außentreppe: unten auf Geländehöhe
+    q.copy(n).addScaledVector(x, (EXT.x0 + EXT.x1) / 2 / R).addScaledVector(f, EXT.z1 / R).normalize();
+    st.ext = { ...EXT, drop: Math.max(0, st.floorH - groundH(q.x, q.y, q.z)) };
+    st.extSt = sub((EXT.x0 + EXT.x1) / 2, (EXT.z0 + EXT.z1) / 2, EXT.x1 - EXT.x0, EXT.z1 - EXT.z0);
     st.door = sub(-2, -2.0, 2.4, 0.4);
   } else st.blockers = [st];
   return st;
@@ -1147,10 +1134,21 @@ function placeStructs() {
   if (!best) { polarDir(30, 0.8, d); best = makeStruct('resort', d, pole, 23, 17); }
   W.structs = [shop, best];
 }
+// Gelände unter dem Poolbecken absenken (Raster ~2.5 m, daher großzügig)
+function carvePool() {
+  const st = W.structs.find((q) => q.kind === 'resort'); if (!st) return;
+  const c = new THREE.Vector3(st.x, st.y, st.z).normalize(), ax = new THREE.Vector3(...st.ax), az = new THREE.Vector3(...st.az), p = new THREE.Vector3(), lim = st.floorH - 2.4;
+  for (let lx = POOL.x0 - 2.6; lx <= POOL.x1 + 2.6; lx += 0.5) for (let lz = POOL.z0 - 2.6; lz <= POOL.z1 + 2.6; lz += 0.5) {
+    if (Math.abs(lx) > st.w / 2 - 1.4 || Math.abs(lz) > st.d / 2 - 1.4) continue;
+    p.copy(c).addScaledVector(ax, lx / R).addScaledVector(az, lz / R);
+    const q = dirToFUV(p.x, p.y, p.z), i = Math.round((q.u + 1) * 0.5 * GN), j = Math.round((q.v + 1) * 0.5 * GN), b = (q.f * VSTR + j) * VSTR + i;
+    if (VH[b] > lim) VH[b] = lim;
+  }
+}
 function resolveOverlaps(dry) {
   for (const r of W.rocks) rockFrame(r);
-  placeStructs();
-  W.rocks = W.rocks.filter((r) => !W.structs.some((st) => { const e = rockEdge(st, r.x, r.y, r.z); return e.d < e.edge + r.maxR * 0.8; }));
+  placeStructs(); carvePool();
+  W.rocks = W.rocks.filter((r) => ![...W.structs, ...W.structs.map((q) => q.extSt).filter(Boolean)].some((st) => { const e = rockEdge(st, r.x, r.y, r.z); return e.d < e.edge + r.maxR * 0.8; }));
 
   // Felsen in alle berührten Zellen eintragen
   const byCell = new Map(), o = [0, 0, 0];
@@ -1200,7 +1198,7 @@ function resolveOverlaps(dry) {
     if (!moved) break;
   }
   // Sicherheitsrunde: kein Teil unter Resort oder Laden (alle Teile direkt prüfen)
-  for (const st of W.structs) { const r2 = (st.maxR + 1) ** 2; for (let i = 0; i < TOTAL; i++) { const dx = W.pos[i * 3] - st.x, dy = W.pos[i * 3 + 1] - st.y, dz = W.pos[i * 3 + 2] - st.z; if (dx * dx + dy * dy + dz * dz < r2) pushOut(i, st); } }
+  for (const st of [...W.structs, ...W.structs.map((q) => q.extSt).filter(Boolean)]) { const r2 = (st.maxR + 1) ** 2; for (let i = 0; i < TOTAL; i++) { const dx = W.pos[i * 3] - st.x, dy = W.pos[i * 3 + 1] - st.y, dz = W.pos[i * 3 + 2] - st.z; if (dx * dx + dy * dy + dz * dz < r2) pushOut(i, st); } }
   placeCollectibles(free);
 }
 // ---------------- Fundstücke verteilen (zählen NICHT zu den 100.000) ----------------
@@ -3859,10 +3857,13 @@ function buildResort(st) {
   const depth = st.hMax - st.hMin + 2.5;
   // Quader über lokale Kanten: slab(x0,x1,z0,z1,y0,y1,mat)
   const slab = (x0, x1, z0, z1, y0, y1, mat) => add(Bx(x1 - x0, y1 - y0, z1 - z0), mat, ['t', (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2]);
-  // Terrasse
-  const WX = st.w / 2, WZ = st.d / 2;
-  slab(-WX, WX, -WZ, WZ, -depth, 0, sand);
-  slab(-WX + 0.2, WX - 0.2, -WZ + 0.2, WZ - 0.2, 0, 0.07, tile);
+  // Terrasse – alles auf einer Ebene, mit Loch fürs Poolbecken
+  const WX = st.w / 2, WZ = st.d / 2, P0 = POOL;
+  for (const [a, b, c2, d2] of [[-WX, P0.x0, -WZ, WZ], [P0.x1, WX, -WZ, WZ], [P0.x0, P0.x1, -WZ, P0.z0], [P0.x0, P0.x1, P0.z1, WZ]]) {
+    const e = 1e-6, ins = (v, lim) => Math.abs(v - lim) < e;
+    slab(a, b, c2, d2, -depth, 0, sand);
+    slab(ins(a, -WX) ? a + 0.2 : a, ins(b, WX) ? b - 0.2 : b, ins(c2, -WZ) ? c2 + 0.2 : c2, ins(d2, WZ) ? d2 - 0.2 : d2, 0, 0.07, tile);
+  }
   // Hauptgebäude
   add(Bx(14, 6, 6), coral, ['t', -2, 6, -4.8]);                       // Obergeschosse
   add(Bx(14, 3, 0.4), coral, ['t', -2, 1.5, -7.6]);                   // Erdgeschoss: Wände mit Türöffnung
@@ -3893,70 +3894,42 @@ function buildResort(st) {
   // Fahne (weht ab 100 %)
   add(Cy(0.05, 0.05, 3, 6), white, ['t', 4.2, 10.9, -6.5]);
   const flag = add(Bx(1.4, 0.8, 0.03), lamb(0x7bd389), ['t', 0.7, 0, 0]); flag.position.set(4.2, 12 - sDrop(4.2, -6.5), -6.5);
-  // ---- Zwei erhöhte Ebenen: Poolterrasse (1.3) und Sonnendeck (2.4), je mit Außentreppe ----
-  const plank = lamb(0xc89a63), joint = lamb(0xb88552), post = lamb(0xffffff), step2 = lamb(0xd4a870), ptile = lamb(0x7fd2ea), pdeep = lamb(0x4fb6d8);
-  const PX0 = -8.2, PX1 = 0.6, PZ0 = 1.4, PZ1 = 6.3;                       // Beckenkante im Deck
-  const PTOP = PDECK.h + 0.08, DT = DECK.h + 0.08, PFLOOR = 0.2;           // Oberkanten + Beckenboden
-  const podium = (D, top, hole) => {
-    const parts = hole ? [[D.x0, hole[0], D.z0, D.z1], [hole[1], D.x1, D.z0, D.z1], [hole[0], hole[1], D.z0, hole[2]], [hole[0], hole[1], hole[3], D.z1]] : [[D.x0, D.x1, D.z0, D.z1]];
-    for (const [a, b, c2, d2] of parts) { slab(a, b, c2, d2, 0, D.h, sand); slab(a, b, c2, d2, D.h, top, plank); }
-    for (const [a, b, c2, d2] of [[D.x0 - 0.07, D.x0, D.z0, D.z1], [D.x1, D.x1 + 0.07, D.z0, D.z1], [D.x0, D.x1, D.z0 - 0.07, D.z0], [D.x0, D.x1, D.z1, D.z1 + 0.07]]) slab(a, b, c2, d2, 0.04, 0.3, tile);
-    for (const [a, b, c2, d2] of [[D.x0 - 0.12, D.x1 + 0.12, D.z0 - 0.12, D.z0 + 0.1], [D.x0 - 0.12, D.x1 + 0.12, D.z1 - 0.1, D.z1 + 0.12], [D.x0 - 0.12, D.x0 + 0.1, D.z0, D.z1], [D.x1 - 0.1, D.x1 + 0.12, D.z0, D.z1]]) slab(a, b, c2, d2, D.h - 0.12, D.h, cream);
-    for (let z = D.z0 + 0.8; z < D.z1 - 0.3; z += 0.8) { if (hole && z > hole[2] - 0.2 && z < hole[3] + 0.1) continue; slab(D.x0 + 0.1, D.x1 - 0.1, z, z + 0.06, top, top + 0.015, joint); }
-  };
-  podium(PDECK, PTOP, [PX0 - 0.55, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55]);
-  podium(DECK, DT, null);
-  // Poolbecken im Podest
-  slab(PX0 - 0.55, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55, 0, PFLOOR, pdeep);
-  for (const [a, b, c2, d2] of [[PX0 - 0.55, PX0, PZ0 - 0.55, PZ1 + 0.55], [PX1, PX1 + 0.55, PZ0 - 0.55, PZ1 + 0.55], [PX0, PX1, PZ0 - 0.55, PZ0], [PX0, PX1, PZ1, PZ1 + 0.55]]) slab(a, b, c2, d2, PFLOOR, PTOP, ptile);
+  // Poolbecken (Gelände darunter ist abgesenkt)
+  const plank = lamb(0xc89a63), post = lamb(0xffffff), step2 = lamb(0xd4a870), ptile = lamb(0x7fd2ea), pdeep = lamb(0x4fb6d8);
+  const PX0 = P0.x0 + 0.55, PX1 = P0.x1 - 0.55, PZ0 = P0.z0 + 0.55, PZ1 = P0.z1 - 0.55, PFLOOR = -1.25, PTOP = 0.07;
+  slab(P0.x0, P0.x1, P0.z0, P0.z1, -depth, PFLOOR, pdeep);
+  for (const [a, b, c2, d2] of [[P0.x0, PX0, P0.z0, P0.z1], [PX1, P0.x1, P0.z0, P0.z1], [PX0, PX1, P0.z0, PZ0], [PX0, PX1, PZ1, P0.z1]]) { slab(a, b, c2, d2, -depth, PFLOOR, sand); slab(a, b, c2, d2, PFLOOR, PTOP, ptile); }
   const poolFloor = slab(PX0, PX1, PZ0, PZ1, PFLOOR, PFLOOR + 0.05, ptile);
-  for (const [a, b, c2, d2] of [[PX0 - 0.95, PX1 + 0.95, PZ0 - 0.95, PZ0 - 0.55], [PX0 - 0.95, PX1 + 0.95, PZ1 + 0.55, PZ1 + 0.95], [PX0 - 0.95, PX0 - 0.55, PZ0 - 0.55, PZ1 + 0.55], [PX1 + 0.55, PX1 + 0.95, PZ0 - 0.55, PZ1 + 0.55]]) slab(a, b, c2, d2, PTOP, PTOP + 0.06, white); // Beckenrand
-  const water = slab(PX0, PX1, PZ0, PZ1, PFLOOR + 0.04, PTOP - 0.22, flatPatch(new THREE.MeshLambertMaterial({ color: 0x35c3e8, emissive: 0x0b4a63, transparent: true, opacity: 0.8 })));
-  for (const sz of [PZ1 - 1.4, PZ1 - 0.8]) add(Bx(0.07, PTOP - PFLOOR + 0.5, 0.07), white, ['t', PX1 - 0.18, (PFLOOR + PTOP + 0.5) / 2, sz]);   // Leiter
+  for (const [a, b, c2, d2] of [[P0.x0, P0.x1, P0.z0, PZ0], [P0.x0, P0.x1, PZ1, P0.z1], [P0.x0, PX0, PZ0, PZ1], [PX1, P0.x1, PZ0, PZ1]]) slab(a, b, c2, d2, PTOP, PTOP + 0.08, white); // Beckenrand
+  const water = slab(PX0, PX1, PZ0, PZ1, PFLOOR + 0.04, PTOP - 0.2, flatPatch(new THREE.MeshLambertMaterial({ color: 0x35c3e8, emissive: 0x0b4a63, transparent: true, opacity: 0.8 })));
+  for (const sz of [PZ1 - 1.4, PZ1 - 0.8]) add(Bx(0.07, PTOP - PFLOOR + 0.6, 0.07), white, ['t', PX1 - 0.18, (PFLOOR + PTOP + 0.6) / 2, sz]);   // Leiter
   for (let k = 0; k < 3; k++) add(Bx(0.07, 0.07, 0.68), white, ['t', PX1 - 0.18, PTOP - 0.35 - k * 0.38, PZ1 - 1.1]);
-  for (const sz of [PZ1 - 1.4, PZ1 - 0.8]) add(Bx(0.07, 0.07, 0.55), white, ['rx', 0.55], ['t', PX1 - 0.18, PTOP + 0.55, sz + 0.18]);
-  // Treppen
-  const buildStairs = (S, hTop, dir) => {
-    const N = Math.max(4, Math.round(hTop / 0.32)), sr = hTop / N, sd = (S.x1 - S.x0) / N;
-    for (let k = 0; k < N; k++) {
-      const h = 0.04 + (k + 1) * sr, a = dir > 0 ? S.x0 + k * sd : S.x1 - (k + 1) * sd;
-      slab(a - 0.02, a + sd + 0.02, S.z0, S.z1, h - sr - 0.02, h, k % 2 ? plank : step2);
-      slab(a, a + sd, S.z0, S.z1, 0, h - sr, sand);
+  // Außentreppe vorne neben dem Schild: vom Gelände hoch auf die Terrasse
+  const X = st.ext, drop = X ? X.drop : 0;
+  if (X && drop > 0.12) {
+    const N = Math.max(1, Math.round(drop / 0.28)), sr = drop / N, sd = (X.z1 - X.z0) / N;
+    for (let k = 0; k < N; k++) { const top = -k * sr, z0 = X.z0 + k * sd; slab(X.x0, X.x1, z0, z0 + sd + 0.02, -drop - 0.6, top, k % 2 ? plank : step2); }
+    for (const sx of [X.x0 - 0.1, X.x1 + 0.1]) {
+      for (let k = 0; k <= N; k += Math.max(1, Math.round(N / 3))) add(Bx(0.08, 0.95, 0.08), post, ['t', sx, -k * sr + 0.47, X.z0 + k * sd]);
+      add(Bx(0.09, 0.09, Math.hypot(X.z1 - X.z0, drop) + 0.1), post, ['rx', Math.atan2(drop, X.z1 - X.z0)], ['t', sx, -drop / 2 + 0.95, (X.z0 + X.z1) / 2]);
     }
-    for (const sz of [S.z0 - 0.12, S.z1 + 0.12]) {
-      for (let k = 0; k <= N; k += 2) { const h = 0.04 + k * sr, xx = dir > 0 ? S.x0 + k * sd : S.x1 - k * sd; add(Bx(0.08, 0.95, 0.08), post, ['t', xx, h + 0.47, sz]); }
-      add(Bx(Math.hypot(S.x1 - S.x0, hTop) + 0.2, 0.09, 0.09), post, ['rz', dir * Math.atan2(hTop, S.x1 - S.x0)], ['t', (S.x0 + S.x1) / 2, 0.04 + hTop / 2 + 0.95, sz]);
-    }
-  };
-  buildStairs(PSTAIR, PDECK.h, -1); buildStairs(STAIR, DECK.h, 1);
-  // Brüstungen (Lücke jeweils an der Treppe)
-  const railSeg = (top, a, b, c2, d2) => {
-    const horiz = Math.abs(b - a) > Math.abs(d2 - c2), len = horiz ? b - a : d2 - c2, n = Math.max(2, Math.round(len / 1.05));
-    for (let k = 0; k <= n; k++) { const t2 = k / n; add(Bx(0.08, 0.95, 0.08), post, ['t', horiz ? a + (b - a) * t2 : a, top + 0.47, horiz ? c2 : c2 + (d2 - c2) * t2]); }
-    add(horiz ? Bx(len, 0.08, 0.08) : Bx(0.08, 0.08, len), post, ['t', horiz ? (a + b) / 2 : a, top + 0.95, horiz ? c2 : (c2 + d2) / 2]);
-  };
-  railSeg(DT, DECK.x0, DECK.x1, DECK.z0, DECK.z0); railSeg(DT, DECK.x0, DECK.x1, DECK.z1, DECK.z1);
-  railSeg(DT, DECK.x1, DECK.x1, DECK.z0, DECK.z1);
-  railSeg(DT, DECK.x0, DECK.x0, DECK.z0, STAIR.z0); railSeg(DT, DECK.x0, DECK.x0, STAIR.z1, DECK.z1);
-  railSeg(PTOP, PDECK.x0, PDECK.x1, PDECK.z0, PDECK.z0); railSeg(PTOP, PDECK.x0, PDECK.x1, PDECK.z1, PDECK.z1);
-  railSeg(PTOP, PDECK.x0, PDECK.x0, PDECK.z0, PDECK.z1);
-  railSeg(PTOP, PDECK.x1, PDECK.x1, PDECK.z0, PSTAIR.z0); railSeg(PTOP, PDECK.x1, PDECK.x1, PSTAIR.z1, PDECK.z1);
+  }
   // Liegen, Schirme, Palmen
   const TOW = [0x5ab4ff, 0xff6b6b, 0xffd23f, 0x7bd389, 0xc77dff, 0xff9f1c, 0x2ec4b6];
   const loungers = [];
-  for (let k = 0; k < 4; k++) loungers.push(makeLounger(g, 7.2 + k * 1.25, 4.8, Math.PI, TOW[k], DT));
-  for (let k = 0; k < 3; k++) loungers.push(makeLounger(g, -9.9, 1.6 + k * 2.1, Math.PI / 2, TOW[k + 4], PTOP));
+  for (let k = 0; k < 4; k++) loungers.push(makeLounger(g, 5.4 + k * 1.3, 4.2, Math.PI, TOW[k]));
+  for (let k = 0; k < 3; k++) loungers.push(makeLounger(g, -10.1, 1.2 + k * 2.0, Math.PI / 2, TOW[k + 4]));
   const umbrellas = [];
-  for (const [x, z, col, y0] of [[-9.9, 7.3, 0xff6b6b, PTOP], [9.4, 1.4, 0x5ab4ff, DT], [0.0, 7.3, 0xffd23f, PTOP]]) {
+  for (const [x, z, col, y0] of [[-6.0, 7.0, 0xff6b6b, 0], [7.4, 6.6, 0x5ab4ff, 0], [-10.2, 7.2, 0xffd23f, 0]]) {
     add(Cy(0.04, 0.04, 2.4, 6), white, ['t', x, y0 + 1.2, z]);
     const open = add(new THREE.ConeGeometry(1.4, 0.55, 10, 1, true), lamb(col, { side: THREE.DoubleSide }), ['t', x, y0 + 2.35, z]);
     const closed = add(new THREE.ConeGeometry(0.18, 1.3, 8), lamb(col), ['rx', Math.PI], ['t', x, y0 + 1.9, z]);
     umbrellas.push([open, closed]);
   }
-  palm(add, -10.4, 6.9, 4.6, 0.3, PTOP); palm(add, 9.9, 7.2, 4.0, -0.25, DT); palm(add, -10.2, -1.2, 5.6, 0.15); palm(add, 5.6, 0.1, 4.2, -0.35);
+  palm(add, -2.5, 7.3, 4.6, 0.3); palm(add, 9.0, 6.3, 4.6, -0.25); palm(add, -10.2, -1.2, 5.6, 0.15); palm(add, 5.6, 0.1, 4.2, -0.35);
   // Geländer um die Terrasse
-  for (let k = 0; k <= 22; k++) { add(Bx(0.08, 0.9, 0.08), rail, ['t', -11.3 + k * 1.03, 0.45, 8.3]); }
-  add(Bx(st.w - 0.4, 0.07, 0.07), rail, ['t', 0, 0.9, 8.3]);
+  for (let k = 0; k <= 22; k++) { const xx = -11.3 + k * 1.03; if (xx > EXT.x0 - 0.2 && xx < EXT.x1 + 0.2) continue; add(Bx(0.08, 0.9, 0.08), rail, ['t', xx, 0.45, 8.3]); }
+  add(Bx(EXT.x0 - 0.1 + 11.3, 0.07, 0.07), rail, ['t', (-11.3 + EXT.x0 - 0.1) / 2, 0.9, 8.3]); add(Bx(11.3 - EXT.x1 - 0.1, 0.07, 0.07), rail, ['t', (EXT.x1 + 0.1 + 11.3) / 2, 0.9, 8.3]);
   for (const sx of [-11.3, 11.3]) { for (let k = 0; k < 16; k++) add(Bx(0.08, 0.9, 0.08), rail, ['t', sx, 0.45, -8 + k * 1.08]); add(Bx(0.07, 0.07, st.d - 0.4), rail, ['t', sx, 0.9, 0]); }
   // Info-Tafel vorne
   add(Bx(0.12, 1.6, 0.12), wood, ['t', -1.6, 0.8, 8.6]); add(Bx(0.12, 1.6, 0.12), wood, ['t', 1.6, 0.8, 8.6]);
@@ -4017,8 +3990,8 @@ function updateResort(dt) {
     q.c.g.visible = want && near; if (!q.c.g.visible) continue;
     if (q.kind === 'lie') animChar(q.c, 'lie', tt);
     else if (q.kind === 'swim') {
-      const a = tt * 0.25 + q.idx * 1.6, cx = -3.8 + Math.cos(q.idx * 2.3) * 2.0, cz = 3.85 + Math.sin(q.idx * 1.7) * 0.5;
-      { const sx = cx + Math.cos(a) * 1.5, sz = cz + Math.sin(a) * 0.9; q.c.g.position.set(sx, 0.1 - sDrop(sx, sz), sz); } q.c.g.rotation.set(0, -a, 0); animChar(q.c, 'swim', tt);
+      const a = tt * 0.25 + q.idx * 1.6, cx = -3.8 + Math.cos(q.idx * 2.3) * 2.0, cz = 3.0 + Math.sin(q.idx * 1.7) * 0.4;
+      { const sx = cx + Math.cos(a) * 1.5, sz = cz + Math.sin(a) * 0.7; q.c.g.position.set(sx, PFLOOR_G - sDrop(sx, sz), sz); } q.c.g.rotation.set(0, -a, 0); animChar(q.c, 'swim', tt);
     } else {
       const P = WALK_PATH, L = WALK_LEN, s0 = ((tt * 1.05 + q.idx * L / 4) % L + L) % L; let acc = 0;
       for (let k = 0; k < P.length; k++) { const A = P[k], B = P[(k + 1) % P.length], seg = Math.hypot(B[0] - A[0], B[1] - A[1]); if (acc + seg >= s0) { const u = (s0 - acc) / seg; { const wx = A[0] + (B[0] - A[0]) * u, wz = A[1] + (B[1] - A[1]) * u; q.c.g.position.set(wx, 0.06 - sDrop(wx, wz), wz); } q.c.g.rotation.set(0, Math.atan2(B[0] - A[0], B[1] - A[1]), 0); break; } acc += seg; }
@@ -4026,7 +3999,8 @@ function updateResort(dt) {
     }
   }
 }
-const WALK_PATH = [[-10.6, -1.0], [5.6, -1.0], [5.6, -1.7], [-10.6, -1.7]];
+const PFLOOR_G = -1.3;
+const WALK_PATH = [[-10.6, -1.0], [2.0, -1.0], [2.0, 7.6], [10.2, 7.6], [10.2, -1.0], [2.0, -1.0], [2.0, -1.7], [-10.6, -1.7]];
 const WALK_LEN = WALK_PATH.reduce((a, A, k) => { const B = WALK_PATH[(k + 1) % WALK_PATH.length]; return a + Math.hypot(B[0] - A[0], B[1] - A[1]); }, 0);
 
 // ---------- Putz-Markt ----------
