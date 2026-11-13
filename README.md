@@ -20,7 +20,10 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Aufklappbare Weltkarte (Tipp auf den Globus): Seen, Wälder, Müll, Schredder, Roombas, Mitspieler, Ziel setzen
 - Wo es sauber ist, kommen Hasen, Vögel und Schmetterlinge zurück
 - Preise so ausgelegt, dass man alles kaufen kann, wenn etwa drei Viertel geschafft sind
-- 39 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
+- 255 Fundstücke verstreut auf dem Planeten – extra, zählen nicht zu den 100.000 Teilen und bringen kein Geld
+- 10 Sammlungen: Armbanduhr, Diamant, Stecknadel, Geldbörse, Goldene Gummiente, 100 Puzzleteile, 100 Artefaktscherben, 12 Dino-Knochen, 8 Schallplatten, 30 Sternensplitter
+- Ausgestellt in der betretbaren Resort-Lobby: Podeste zeigen „???“ oder den Stand (z. B. 23/100) – was dabei herauskommt, sieht man erst, wenn die Sammlung voll ist
+- 42 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
 - Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert); 10 Spielfiguren zur Auswahl
 
