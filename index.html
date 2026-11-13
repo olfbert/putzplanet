@@ -203,17 +203,63 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 #title .card{background:rgba(14,22,40,.72)}
 #title{background:linear-gradient(180deg,rgba(5,10,25,.05),rgba(5,10,25,.45))}
 
+
+/* ---------- kompaktes HUD ---------- */
+.pill{border-radius:12px;padding:4px 10px;border-width:1.5px}
+#stats{top:calc(var(--st) + 8px);left:calc(var(--sl) + 8px);gap:4px}
+#coins{font-size:18px;padding:3px 10px 3px 5px;gap:5px}
+#coins .ico{width:19px;height:19px}
+#trash{font-size:10.5px;min-width:118px;padding:4px 9px}
+#trash .bar{height:4px;margin-top:3px}
+#trash .timer{font-size:11.5px;margin-top:3px}
+#compass{top:calc(var(--st) + 8px);font-size:11px;padding:3px 10px;gap:5px}
+#arrow{font-size:12px}
+#topRight{top:calc(var(--st) + 8px);right:calc(var(--sr) + 8px);gap:6px}
+#mmBox{width:70px;height:70px}
+.rbtn{width:36px;height:36px;border-radius:11px;padding:8px}
+#rbtns{gap:6px}
+#cross{width:6px;height:6px;margin:-3px 0 0 -3px}
+#targetLbl{top:calc(50% + 12px);font-size:11px;padding:2px 9px}
+#inv{bottom:calc(var(--sb) + 8px);font-size:12px;min-width:92px;padding:3px 10px;gap:6px}
+#inv span svg{width:15px;height:15px}
+#actions{right:calc(var(--sr) + 10px);bottom:calc(var(--sb) + 10px);width:150px;height:150px}
+.abtn small{font-size:8.5px;margin-top:1px}
+#btnPick{width:70px;height:70px}
+#btnSweep{width:50px;height:50px;right:80px;bottom:2px}
+#btnThrow{width:50px;height:50px;right:4px;bottom:80px}
+#btnPlace{width:50px;height:50px;right:66px;bottom:66px;border-color:#3cff8f}
+#joy{width:110px;height:110px;margin:-55px 0 0 -55px}
+#joyKnob{width:46px;height:46px;margin:-23px 0 0 -23px}
+#joyHint{font-size:10px;bottom:calc(var(--sb) + 18px)}
+#hint{bottom:calc(var(--sb) + 40px);font-size:11px;max-width:52vw;padding:4px 10px}
+#mpBadge{top:auto;bottom:calc(var(--sb) + 40px);left:calc(var(--sl) + 8px);transform:none;font-size:10px}
+#toasts{top:calc(var(--st) + 66px)}
+.toast{font-size:12px;padding:5px 11px;border-radius:12px}
+.floater{font-size:17px}
+.pickpop{font-size:14px;top:calc(50% - 34px)}
+#radio{top:calc(var(--st) + 40px);bottom:auto;left:50%;transform:translateX(-50%);max-width:min(420px,58vw);padding:4px 10px 4px 4px;gap:8px;border-width:1.5px;border-radius:14px}
+#radio.rin{animation:rinTop .3s ease-out}
+@keyframes rinTop{from{transform:translate(-50%,-30px);opacity:0}to{transform:translateX(-50%);opacity:1}}
+#radioFace{width:34px;height:34px;min-width:34px}
+.rname{font-size:8.5px}
+#radioTxt{font-size:11.5px;line-height:1.25}
+#achBanner{top:calc(var(--st) + 40px);padding:5px 12px 5px 5px;gap:9px;border-width:2px;border-radius:16px}
+#achBanner .medal{width:38px;height:38px;min-width:38px;font-size:19px;border-width:2px}
+.achT{font-size:9px}.achN{font-size:15px}.achD{font-size:10.5px}
+.flycoin{width:20px;height:20px;margin:-10px 0 0 -10px}
+
 @media (max-width:560px){
-  #inv{left:calc(var(--sl) + 12px);transform:none;bottom:calc(var(--sb) + 14px);min-width:0}
-  #inv .bar{min-width:40px}
-  #joyHint{bottom:calc(var(--sb) + 64px)}
-  #hint{bottom:calc(var(--sb) + 220px);max-width:86vw}
-  #compass{top:calc(var(--st) + 10px);left:calc(var(--sl) + 10px);transform:none;margin-top:96px}
-  #mpBadge{top:calc(var(--st) + 168px);left:calc(var(--sl) + 10px);transform:none}
-  #compass{margin-top:124px}
-  #radio{bottom:calc(var(--sb) + 210px);max-width:86vw}
+  #inv{left:calc(var(--sl) + 8px);transform:none;bottom:calc(var(--sb) + 10px);min-width:0}
+  #inv .bar{min-width:36px}
+  #joyHint{bottom:calc(var(--sb) + 48px)}
+  #hint{bottom:calc(var(--sb) + 172px);max-width:86vw}
+  #compass{top:calc(var(--st) + 8px);left:calc(var(--sl) + 8px);transform:none;margin-top:84px}
+  #mpBadge{top:calc(var(--st) + 118px);bottom:auto}
+  #radio{top:calc(var(--st) + 146px);max-width:90vw}
+  #achBanner{top:calc(var(--st) + 146px)}
+  #toasts{top:calc(var(--st) + 200px)}
 }
-@media (max-height:500px){ #actions{transform:scale(.85);transform-origin:right bottom} .logo{font-size:40px} }
+@media (max-height:500px){ .logo{font-size:40px} }
 </style>
 </head>
 <body>
@@ -240,6 +286,7 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
   <div id="inv" class="pill"><span>🧺</span><span id="invTxt">0/1</span><div class="bar"><i id="invBar"></i></div></div>
   <div id="joyHint">Links ziehen = laufen<br>Rechts wischen = umsehen</div>
   <div id="actions">
+    <button id="btnPlace" class="abtn hidden">🤖<small id="placeN">Absetzen</small></button>
     <button id="btnThrow" class="abtn">💨<small>Werfen</small></button>
     <button id="btnSweep" class="abtn">🧹<small>Fegen</small></button>
     <button id="btnPick" class="abtn">✋<small>Aufheben</small></button>
@@ -1136,7 +1183,7 @@ function updateShredders(dt) {
 }
 
 // ---------------- Roombas ----------------
-const RB = { list: [], ig: null, led: null, claimed: new Set() };
+const RB = { list: [], carried: [], ig: null, led: null, claimed: new Set() };
 function initRoombaMeshes() {
   RB.ig = new IG([
     { geo: ops(Cy(0.3, 0.32, 0.09, 18), [['t', 0, 0.06, 0]]), mat: lamb(0x2b2d42) },
@@ -1146,36 +1193,47 @@ function initRoombaMeshes() {
   ], 48);
   RB.led = new IG([{ geo: ops(Sp(0.035, 6, 4), [['t', 0, 0.14, 0.22]]), mat: flatPatch(new THREE.MeshBasicMaterial({ color: 0xffffff })) }], 48, true);
 }
+const shredCell = (si) => { const s = SH[si] || SH[0]; return dirToCell(s.p.x, s.p.y, s.p.z); };
+function newRoomba(p, f, anchorCell) { return { p, f, st: 0, tg: -1, load: 0, carry: [], wait: Math.random(), tp: p.clone(), tf: f.clone(), anchor: anchorCell }; }
 function spawnRoomba(at) {
   const si = at != null ? at : nearestShredder(PL.pos), s = SH[si] || SH[0];
-  const a = Math.random() * TAU, d = [0, 0, 0];
+  const a = Math.random() * TAU;
   const p = s.p.clone().addScaledVector(s.f, Math.cos(a) * 2.2).addScaledVector(new THREE.Vector3().crossVectors(s.n, s.f), Math.sin(a) * 2.2); surf(p);
-  const n = p.clone().normalize();
-  RB.list.push({ p, f: tangentOf(n), st: 0, tg: -1, load: 0, carry: [], wait: Math.random(), tp: new THREE.Vector3(), tf: new THREE.Vector3() });
+  RB.list.push(newRoomba(p, tangentOf(p.clone().normalize()), shredCell(si)));
 }
-function syncRoombaCount() { while (RB.list.length < G.roombaCount) spawnRoomba(); while (RB.list.length > G.roombaCount) RB.list.pop(); }
+function syncRoombaCount() { while (RB.list.length + RB.carried.length < G.roombaCount) spawnRoomba(); while (RB.list.length + RB.carried.length > G.roombaCount && RB.list.length) RB.list.pop(); }
 const roombaZoneCache = new Map();
-function roombaZone(si, range) { // Zellen nach Abstand zum Schredder sortiert
-  const key = si * 1000 + range; let z = roombaZoneCache.get(key); if (z) return z;
-  const s = SH[si]; const n = s.n; const list = cellsWithin(n.x, n.y, n.z, range, []);
-  list.sort((a, b) => (cellDir[b * 3] * n.x + cellDir[b * 3 + 1] * n.y + cellDir[b * 3 + 2] * n.z) - (cellDir[a * 3] * n.x + cellDir[a * 3 + 1] * n.y + cellDir[a * 3 + 2] * n.z));
+function roombaZone(cell, range) { // Zellen nach Abstand zum Einsatzort sortiert
+  const key = cell * 1000 + range; let z = roombaZoneCache.get(key); if (z) return z;
+  const x = cellDir[cell * 3], y = cellDir[cell * 3 + 1], zz = cellDir[cell * 3 + 2]; const list = cellsWithin(x, y, zz, range, []);
+  const d = (c) => cellDir[c * 3] * x + cellDir[c * 3 + 1] * y + cellDir[c * 3 + 2] * zz;
+  list.sort((a, b) => d(b) - d(a));
   z = { cells: list, ptr: 0, maxS: -1 }; roombaZoneCache.set(key, z); return z;
 }
-function findRoombaTarget(r, maxS) {
-  const si = nearestShredder(r.p); const z = roombaZone(si, RRANGE[G.upg.rrange].v);
+function zoneScan(z, maxS, r, collect) {
   if (z.maxS !== maxS) { z.ptr = 0; z.maxS = maxS; }
   let best = -1, bd = 1e18, nonEmpty = 0;
-  for (let k = z.ptr; k < z.cells.length && nonEmpty < 4; k++) {
+  for (let k = z.ptr; k < z.cells.length && nonEmpty < (collect ? 4 : 1); k++) {
     const c = z.cells[k]; let any = false;
     for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) {
       if (isRem(i) || TYPES[W.type[i]].s > maxS) continue;
-      any = true; if (RB.claimed.has(i)) continue;
-      const dx = W.pos[i * 3] - r.p.x, dy = W.pos[i * 3 + 1] - r.p.y, dz = W.pos[i * 3 + 2] - r.p.z, d = dx * dx + dy * dy + dz * dz;
-      if (d < bd) { bd = d; best = i; }
+      any = true; if (!collect) break; if (RB.claimed.has(i)) continue;
+      const dx = W.pos[i * 3] - r.p.x, dy = W.pos[i * 3 + 1] - r.p.y, dz = W.pos[i * 3 + 2] - r.p.z, dd = dx * dx + dy * dy + dz * dz;
+      if (dd < bd) { bd = dd; best = i; }
     }
     if (!any && k === z.ptr) z.ptr++; else if (any) nonEmpty++;
   }
-  return best;
+  return collect ? best : nonEmpty > 0;
+}
+function findRoombaTarget(r, maxS) {
+  const range = RRANGE[G.upg.rrange].v;
+  if (r.anchor == null) r.anchor = shredCell(nearestShredder(r.p));
+  const t = zoneScan(roombaZone(r.anchor, range), maxS, r, true);
+  if (t >= 0) return t;
+  // Gebiet leer: nächsten Schredder suchen, um den es noch Arbeit gibt
+  const order = SH.map((s, i) => [s.p.distanceToSquared(r.p), i]).sort((a, b) => a[0] - b[0]);
+  for (const [, si] of order) { const c = shredCell(si); if (c === r.anchor) continue; if (zoneScan(roombaZone(c, range), maxS, r, false)) { r.anchor = c; return zoneScan(roombaZone(c, range), maxS, r, true); } }
+  return -1;
 }
 const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
 function moveOnSurface(o, target, spd, dt, turn = 7) {
@@ -1196,7 +1254,7 @@ function updateRoombas(dt) {
       if (r.tg < 0) {
         r.wait -= dt; if (r.wait > 0) { r.f.applyAxisAngle(_v3.copy(r.p).normalize(), dt * 1.5); continue; }
         r.tg = findRoombaTarget(r, maxS);
-        if (r.tg < 0) { r.wait = 2.5; if (r.load > 0) r.st = 1; continue; }
+        if (r.tg < 0) { r.wait = 3 + Math.random() * 2; if (r.load > 0) r.st = 1; continue; }
         RB.claimed.add(r.tg);
       }
       _v3.set(W.pos[r.tg * 3], W.pos[r.tg * 3 + 1], W.pos[r.tg * 3 + 2]);
@@ -1352,11 +1410,13 @@ const vmHeld = new THREE.Mesh(new THREE.BufferGeometry(), vmHeldColMat); vmPivot
 const vmBroom = new THREE.Group(); vmScene.add(vmBroom);
 {
   const wood = new THREE.MeshLambertMaterial({ color: 0xa0703c }), straw = new THREE.MeshLambertMaterial({ color: 0xe8c46a }), red = new THREE.MeshLambertMaterial({ color: 0xd62828 });
-  const h = new THREE.Mesh(Cy(0.018, 0.018, 1.2, 8), wood); h.position.y = 0.6; vmBroom.add(h);
+  const h = new THREE.Mesh(Cy(0.016, 0.016, 0.7, 8), wood); h.position.y = 0.35; vmBroom.add(h);
   const hd = new THREE.Mesh(Bx(0.32, 0.06, 0.08), red); vmBroom.add(hd);
   const br = new THREE.Mesh(Bx(0.3, 0.14, 0.06), straw); br.position.y = -0.09; vmBroom.add(br);
   vmBroom.position.set(-0.3, -0.75, -1.1); vmBroom.rotation.set(-0.95, 0.2, 0.55);
 }
+const vmRoomba = new THREE.Group(); vmScene.add(vmRoomba);
+{ const a = new THREE.Mesh(Cy(0.3, 0.32, 0.09, 18), new THREE.MeshLambertMaterial({ color: 0x2b2d42 })); vmRoomba.add(a); const b = new THREE.Mesh(Cy(0.25, 0.25, 0.02, 18), new THREE.MeshLambertMaterial({ color: 0x8d99ae })); b.position.y = 0.055; vmRoomba.add(b); const c = new THREE.Mesh(Sp(0.035, 6, 4), new THREE.MeshBasicMaterial({ color: 0x3cff8f })); c.position.set(0, 0.08, 0.22); vmRoomba.add(c); vmRoomba.visible = false; }
 let vmHeldType = -1, vmAnim = 0, vmSweepAnim = 0;
 function updateHeldModel() {
   const id = G.inv.length ? G.inv[G.inv.length - 1] : -1; const t = id >= 0 ? W.type[id] : -1;
@@ -1373,10 +1433,11 @@ function updateViewmodel(dt, moving) {
   const big = vmHeldType >= 0 && TYPES[vmHeldType].s >= 3;
   vmPivot.position.set(big ? 0.05 : 0.36, (big ? -0.22 : -0.32) + bob - vmAnim * 0.4, big ? -0.95 : -0.72);
   vmPivot.rotation.set(0.15, -0.5 + t * 0.0, 0.08);
-  vmBroom.visible = G.upg.broom > 0;
+  vmBroom.visible = G.upg.broom > 0 && !RB.carried.length;
+  vmRoomba.visible = RB.carried.length > 0; if (vmRoomba.visible) { vmPivot.visible = false; vmRoomba.position.set(0.3, -0.3 + bob, -0.8); vmRoomba.rotation.set(0.6, t * 0.6, 0.2); vmRoomba.scale.setScalar(0.5); } else vmPivot.visible = true;
   const sw = vmSweepAnim > 0 ? Math.sin((0.5 - vmSweepAnim) / 0.5 * Math.PI) : 0;
-  vmBroom.position.set(-0.3 + sw * 0.45, -0.75 + Math.abs(bob) * 0.6, -1.1);
-  vmBroom.rotation.set(-0.95 + sw * 0.15, 0.2 - sw * 0.7, 0.55 - sw * 0.5);
+  vmBroom.position.set(-0.36 + sw * 0.45, -0.6 + Math.abs(bob) * 0.6, -0.95);
+  vmBroom.rotation.set(-1.05 + sw * 0.15, 0.2 - sw * 0.7, 0.6 - sw * 0.5);
 }
 
 // ---------------- Minikarte (Globus) ----------------
@@ -1544,8 +1605,9 @@ function updateCamera(dt) {
 const CAM_FWD = new THREE.Vector3();
 
 // ---------------- Zielen ----------------
-let target = -1;
+let target = -1, targetRb = -1;
 const _tc = new THREE.Vector3();
+const RB_HL_GEO = ops(Cy(0.33, 0.35, 0.16, 18), [['t', 0, 0.07, 0]]);
 function updateTarget() {
   camera.getWorldDirection(CAM_FWD);
   const o = camera.position, reach = REACH[G.upg.reach].v;
@@ -1569,8 +1631,22 @@ function updateTarget() {
     for (const c of PL.near) for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) if (!isRem(i)) near(i, W.pos[i * 3], W.pos[i * 3 + 1], W.pos[i * 3 + 2]);
     for (const [id, L] of G.loose) near(id, L[0], L[1], L[2]);
   }
-  if (best !== target) { target = best; hudTargetChanged(); }
-  if (target >= 0) {
+  // Roombas lassen sich aufheben (nur Solo/Host)
+  let rbBest = -1;
+  if (NET.mode !== 'guest') {
+    let rbs = 1e9;
+    RB.list.forEach((r, i) => {
+      const n = _v1.copy(r.p).normalize(); flatCPU(r.p.x + n.x * 0.12, r.p.y + n.y * 0.12, r.p.z + n.z * 0.12, PL.up, _tc);
+      const vx = _tc.x - o.x, vy = _tc.y - o.y, vz = _tc.z - o.z, t = vx * CAM_FWD.x + vy * CAM_FWD.y + vz * CAM_FWD.z;
+      if (t < 0 || t > reach + 0.8) return; const perp2 = vx * vx + vy * vy + vz * vz - t * t, rr = 0.5 + t * 0.04; if (perp2 > rr * rr) return;
+      const sc = t + Math.sqrt(Math.max(0, perp2)) * 2.5 - 0.6; if (sc < rbs) { rbs = sc; rbBest = i; }
+    });
+    if (rbBest >= 0 && rbs < bs) best = -1; else rbBest = -1;
+  }
+  if (best !== target || rbBest !== targetRb) { target = best; targetRb = rbBest; hudTargetChanged(); }
+  if (targetRb >= 0) {
+    const r = RB.list[targetRb]; hl.geometry = RB_HL_GEO; writeMatNF(hl.matrix.elements, 0, r.p.x, r.p.y, r.p.z, ...(_v1.copy(r.p).normalize().toArray()), r.f.x, r.f.y, r.f.z, 1.25); hl.matrixWorldNeedsUpdate = true; hl.visible = true;
+  } else if (target >= 0) {
     const T = TYPES[W.type[target]]; const L = G.loose.get(target);
     const x = L ? L[0] : W.pos[target * 3], y = L ? L[1] : W.pos[target * 3 + 1], z = L ? L[2] : W.pos[target * 3 + 2], yb = L ? L[3] : W.yaw[target];
     hl.geometry = T.geo; writeMat(hl.matrix.elements, 0, x, y, z, yb * TAU / 256, 1);
@@ -1643,6 +1719,7 @@ function onCellChanged(c) {
 }
 function addCoins(v) { G.coins += v; G.totalCoins += v; }
 function tryPick() {
+  if (targetRb >= 0) { pickRoomba(targetRb); return; }
   if (target < 0) { if (G.upg.broom > 0) doSweep(); return; }
   const id = target, T = TYPES[W.type[id]];
   if (G.inv.length > 0 && invUnits() + T.s > CAP[G.upg.cap].v) { sfx('full'); toast(G.upg.cap === 0 ? 'Hände voll – erst zum Schredder!' : 'Behälter voll! Ab zum Schredder 🏭', 'bad'); flashInv(); if (G.upg.cap === 0 && G.coins >= 12) radio('full'); return; }
@@ -1653,7 +1730,7 @@ function takeItem(id, fx = 5) {
   const L = G.loose.get(id); let p;
   if (L) { G.loose.delete(id); p = new THREE.Vector3(L[0], L[1], L[2]); }
   else { if (isRem(id)) return false; removeFromGround(id); p = new THREE.Vector3(W.pos[id * 3], W.pos[id * 3 + 1], W.pos[id * 3 + 2]); }
-  G.inv.push(id); trashDirty = true; target = -1; G.st.picked++;
+  G.inv.push(id); trashDirty = true; target = -1; hudTargetChanged(); G.st.picked++;
   if (G.st.picked === 1) radio('firstPick');
   const T = TYPES[W.type[id]]; if (fx === 5) pickPop('+ ' + T.n); if (fx) spawnBurst(p, fx, T.tintCols[W.vari[id] % T.tintCols.length], 1.4); sfx('pick'); updateHeldModel();
   return true;
@@ -1676,6 +1753,23 @@ function doSweep() {
   got.forEach((id, k) => { const L = G.loose.get(id); const p = L ? new THREE.Vector3(L[0], L[1], L[2]) : new THREE.Vector3(W.pos[id * 3], W.pos[id * 3 + 1], W.pos[id * 3 + 2]); takeItem(id, k < 6 ? 2 : 0); if (k < 10) addArcFlyer(id, p, from, k * 0.03, -1); });
   netSend({ t: 'rm', ids: got });
   if (G.tut === 0) { G.tut = 1; showHint('Bring den Müll zum Schredder – der Pfeil oben zeigt den Weg'); }
+}
+function pickRoomba(i) {
+  if (NET.mode === 'guest') { toast('Nur der Host kann Roombas umsetzen'); return; }
+  const r = RB.list[i]; if (!r) return;
+  RB.list.splice(i, 1); if (r.tg >= 0) RB.claimed.delete(r.tg); r.tg = -1;
+  RB.carried.push(r); targetRb = -1; hudTargetChanged(); sfx('pick');
+  toast(RB.carried.length > 1 ? `${RB.carried.length} Roombas unterm Arm 🤖` : 'Roomba eingepackt 🤖 – tippe „Absetzen“, wo er putzen soll', 'good');
+}
+function placeRoomba() {
+  if (!RB.carried.length) return;
+  const p = PL.pos.clone().addScaledVector(PL.f, 1.4); surf(p);
+  if (groundH(p.x, p.y, p.z) < WATER + 0.1) { toast('Roombas können nicht schwimmen 🌊', 'bad'); sfx('error'); return; }
+  const r = RB.carried.pop(); const n = p.clone().normalize();
+  r.p.copy(p); r.f.copy(PL.f).addScaledVector(n, -PL.f.dot(n)).normalize(); r.tp.copy(r.p); r.tf.copy(r.f);
+  r.st = r.load > 0 ? 1 : 0; r.tg = -1; r.wait = 0.4; r.anchor = dirToCell(n.x, n.y, n.z);
+  RB.list.push(r); sfx('buy'); spawnBurst(p, 8, new THREE.Color(0x3cff8f), 1.5);
+  toast(`Roomba putzt jetzt hier (Umkreis ${fmt(RRANGE[G.upg.rrange].v)} m)`, 'good');
 }
 function doThrow() {
   if (!G.inv.length) return;
@@ -1780,7 +1874,7 @@ function makeSave() {
     upg: { ...G.upg }, rc: G.roombaCount, shredders: G.shredders.map((s) => s.slice()), removed: W.removed.slice(),
     loose: [...G.loose].map(([id, L]) => [id, ...L]), inv: G.inv.slice(),
     player: { p: PL.pos.toArray(), f: PL.f.toArray(), pitch: PL.pitch },
-    roombas: RB.list.map((r) => [r.p.x, r.p.y, r.p.z]), ts: Date.now(),
+    roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1]), ...RB.carried.map(() => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z)])], ts: Date.now(),
     st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(),
   };
 }
@@ -1800,8 +1894,8 @@ function applySave(s) {
   G.inv = (s.inv || []).slice();
   G.st = { ...freshStats(), ...(s.st || {}) }; G.radio = (s.radio || []).slice(); G.ach = (s.ach || []).slice();
   syncShredders();
-  RB.list.length = 0; RB.claimed.clear();
-  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); RB.list.push({ p, f: tangentOf(p.clone().normalize()), st: 0, tg: -1, load: 0, carry: [], wait: Math.random(), tp: p.clone(), tf: new THREE.Vector3() }); }
+  RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear();
+  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); const anc = rp[3] != null && rp[3] >= 0 ? rp[3] : shredCell(nearestShredder(p)); RB.list.push(newRoomba(p, tangentOf(p.clone().normalize()), anc)); }
   syncRoombaCount();
   if (s.player) placePlayer(new THREE.Vector3().fromArray(s.player.p), new THREE.Vector3().fromArray(s.player.f)); else spawnAtShredder();
   PL.pitch = s.player ? s.player.pitch : -0.12;
@@ -1813,7 +1907,7 @@ function newGameState(seed) {
   G.coins = 0; G.totalCoins = 0; G.shredded = 0; G.played = 0; G.tut = 0; G.created = Date.now(); G.won = false;
   G.upg = { cap: 0, broom: 0, speed: 0, reach: 0, turbo: 0, rspeed: 0, rcap: 0, rrange: 0 };
   G.roombaCount = 0; G.shredders = [[0, R, 0]]; G.loose = new Map(); G.inv = []; G.st = freshStats(); G.ach = []; G.radio = [];
-  syncShredders(); RB.list.length = 0; RB.claimed.clear(); spawnAtShredder(); updateHeldModel(); MM.dirty = true;
+  syncShredders(); RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear(); spawnAtShredder(); updateHeldModel(); MM.dirty = true;
 }
 function spawnAtShredder() { const d = [0, 0, 0]; polarDir(5.5, -0.6, d); const p = new THREE.Vector3(d[0], d[1], d[2]).multiplyScalar(R); placePlayer(p); const toS = SH[0].p.clone().sub(PL.pos); placePlayer(p, toS.addScaledVector(PL.up, -toS.dot(PL.up)).normalize().applyAxisAngle(PL.up, 0.45)); PL.pitch = -0.12; }
 async function exportSave() {
@@ -2066,7 +2160,8 @@ async function openExport() {
 let hudT = 0; const _hudInv = { u: -1, c: -1 };
 function hudTargetChanged() {
   const el = $('#targetLbl'), cr = $('#cross'), pb = $('#btnPick');
-  if (target >= 0) { const T = TYPES[W.type[target]]; el.innerHTML = `${T.n} · <b>${fmt(T.v * TURBO[G.upg.turbo].v)} ${CI}</b>${T.s > 1 ? ` · ${T.s} Einh.` : ''}`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
+  if (targetRb >= 0) { el.innerHTML = `Roomba · <b>aufheben & umsetzen</b>`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
+  else if (target >= 0) { const T = TYPES[W.type[target]]; el.innerHTML = `${T.n} · <b>${fmt(T.v * TURBO[G.upg.turbo].v)} ${CI}</b>${T.s > 1 ? ` · ${T.s} Einh.` : ''}`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
   else { el.classList.remove('on'); cr.classList.remove('on'); pb.classList.add('dim'); }
 }
 function updateHUD(dt) {
@@ -2078,7 +2173,8 @@ function updateHUD(dt) {
   if (u !== _hudInv.u || cap !== _hudInv.c) { _hudInv.u = u; _hudInv.c = cap; $('#invTxt').textContent = `${u}/${cap}`; $('#invBar').style.width = Math.min(100, u / cap * 100) + '%'; }
   $('#btnSweep').classList.toggle('hidden', G.upg.broom === 0);
   $('#btnThrow').classList.toggle('hidden', G.inv.length === 0);
-  if (target < 0) $('#btnPick').classList.add('dim');
+  if (target < 0 && targetRb < 0) $('#btnPick').classList.add('dim');
+  const pc = RB.carried.length; $('#btnPlace').classList.toggle('hidden', !pc); if (pc) $('#placeN').textContent = pc > 1 ? `Absetzen ×${pc}` : 'Absetzen';
   // Kompass zum nächsten Schredder
   const si = nearestShredder(PL.pos), s = SH[si];
   if (s) {
@@ -2123,14 +2219,14 @@ document.addEventListener('mousemove', (e) => { if (document.pointerLockElement 
 addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
   INPUT.keys[e.code] = true; if (!G.running) return;
-  if (e.code === 'KeyE') tryPick(); else if (e.code === 'KeyF') doSweep(); else if (e.code === 'KeyQ') doThrow();
+  if (e.code === 'KeyE') tryPick(); else if (e.code === 'KeyF') doSweep(); else if (e.code === 'KeyQ') doThrow(); else if (e.code === 'KeyR') placeRoomba();
   else if (e.code === 'KeyB') { PANEL === 'shop' ? closePanel() : renderShop(); } else if (e.code === 'Escape') { PANEL ? closePanel() : openMenu(); }
 });
 addEventListener('keyup', (e) => { INPUT.keys[e.code] = false; });
 addEventListener('blur', () => { INPUT.keys = {}; });
 const btn = (id, fn) => { const b = $(id); b.addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); auInit(); fn(); }); };
 btn('#btnPick', () => tryPick()); btn('#btnSweep', () => doSweep()); btn('#btnThrow', () => doThrow());
-btn('#btnShop', () => renderShop()); btn('#btnMenu', () => openMenu());
+btn('#btnShop', () => renderShop()); btn('#btnMenu', () => openMenu()); btn('#btnPlace', () => placeRoomba());
 $('#winOk').onclick = () => $('#winScreen').classList.add('hidden');
 addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vmCam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vmCam.updateProjectionMatrix(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden) saveGame(); });
@@ -2243,7 +2339,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -2263,6 +2359,7 @@ const ICON = {
   broom: `<svg viewBox="0 0 24 24"><path d="M19.5 2.5l-7.2 8.6" stroke="#a0703c" stroke-width="2.6" stroke-linecap="round"/><path d="M10.4 9.6l4 3.4-1.6 1.9c-1.8 2.2-4.6 5.4-9.8 6.6 1.4-4.9 3.8-8.1 5.8-10z" fill="#ffd23f" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.6 15.4l-2.4 2.8M11 16.4l-2.2 2.6" stroke="#b8901a" stroke-width="1.2"/></svg>`,
   throw: `<svg viewBox="0 0 24 24"><path d="M4 19c2-8 8-12 15-12" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 3"/><path d="M15.5 3.5L20 7l-4 3.8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="2.5" y="16.5" width="5" height="5" rx="1" fill="#e63946" stroke="${OUT}" stroke-width="1.5"/></svg>`,
   bucket: `<svg viewBox="0 0 24 24"><path d="M4.5 8h15l-1.8 12a1.8 1.8 0 01-1.8 1.5H8.1a1.8 1.8 0 01-1.8-1.5z" fill="#5ab4ff" stroke="${OUT}" stroke-width="2" stroke-linejoin="round"/><path d="M5 8c0-5 14-5 14 0" fill="none" stroke="${OUT}" stroke-width="1.8"/><path d="M4.5 8h15" stroke="${OUT}" stroke-width="2.2"/></svg>`,
+  robot: `<svg viewBox="0 0 24 24"><ellipse cx="12" cy="15" rx="9.5" ry="4.5" fill="#55606e" stroke="${OUT}" stroke-width="1.8"/><ellipse cx="12" cy="12.5" rx="9" ry="4.2" fill="#2b2d42" stroke="${OUT}" stroke-width="1.8"/><ellipse cx="12" cy="11.6" rx="6" ry="2.6" fill="#8d99ae"/><circle cx="16.5" cy="13.5" r="1.3" fill="#3cff8f"/><path d="M12 3v4M9 5l3-2 3 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`,
   trophy: `<svg viewBox="0 0 24 24"><path d="M7 3.5h10v4.5a5 5 0 01-10 0z" fill="#ffd23f" stroke="${OUT}" stroke-width="1.8"/><path d="M7 5H4.2c0 3 1.2 4.6 3.3 5M17 5h2.8c0 3-1.2 4.6-3.3 5" fill="none" stroke="${OUT}" stroke-width="1.6"/><path d="M12 13v4M8.5 20.5h7l-.8-3.5H9.3z" fill="#e0a21a" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
 };
 const CI = `<i class="ci">${ICON.coin}</i>`;
@@ -2273,6 +2370,7 @@ function decorateHud() {
   $('#btnPick').innerHTML = `${ICON.hand}<small>Aufheben</small>`;
   $('#btnSweep').innerHTML = `${ICON.broom}<small>Fegen</small>`;
   $('#btnThrow').innerHTML = `${ICON.throw}<small>Werfen</small>`;
+  $('#btnPlace').innerHTML = `${ICON.robot}<small id="placeN">Absetzen</small>`;
   $('#inv span').innerHTML = ICON.bucket;
   $('#timeIco').innerHTML = ICON.clock; $('#binIco').innerHTML = ICON.bin;
 }
