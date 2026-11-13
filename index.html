@@ -2119,6 +2119,26 @@ function pickRoomba(i) {
   RB.carried.push(r); targetRb = -1; hudTargetChanged(); sfx('pick');
   toast(RB.carried.length > 1 ? `${RB.carried.length} Roombas unterm Arm 🤖` : 'Roomba eingepackt 🤖 – tippe „Absetzen“, wo er putzen soll', 'good');
 }
+// alle Roombas einsammeln bzw. alle auf einmal rund um mich absetzen (nur Solo/Host)
+function recallRoombas() {
+  if (NET.mode === 'guest' || !RB.list.length) return;
+  for (const r of RB.list) { if (r.tg >= 0) RB.claimed.delete(r.tg); r.tg = -1; RB.carried.push(r); }
+  RB.list.length = 0; targetRb = -1; hudTargetChanged(); sfx('pick'); closePanel();
+  toast(`${RB.carried.length} Roombas unterm Arm 🤖 – lauf hin, wo sie putzen sollen`, 'good');
+}
+function placeAllRoombas() {
+  if (!RB.carried.length) return; const n = PL.pos.clone().normalize(), t1 = tangentOf(n), t2 = new THREE.Vector3().crossVectors(n, t1); let k = 0, placed = 0;
+  while (RB.carried.length && k < 400) {
+    const a = k * 2.4, rad = 1.6 + Math.sqrt(k) * 1.1; k++;
+    const p = PL.pos.clone().addScaledVector(t1, Math.cos(a) * rad).addScaledVector(t2, Math.sin(a) * rad); surf(p);
+    if (groundH(p.x, p.y, p.z) < WATER + 0.1) continue;
+    const r = RB.carried.pop(), pn = p.clone().normalize();
+    r.p.copy(p); r.f.copy(tangentOf(pn)); r.tp.copy(r.p); r.tf.copy(r.f); r.st = r.load > 0 ? 1 : 0; r.tg = -1; r.wait = 0.3 + Math.random(); r.anchor = dirToCell(pn.x, pn.y, pn.z);
+    RB.list.push(r); placed++;
+  }
+  closePanel(); sfx('buy'); spawnBurst(PL.pos, 14, new THREE.Color(0x3cff8f), 2);
+  toast(placed ? `${placed} Roombas putzen jetzt hier 🤖` : 'Hier ist kein Platz – nicht am Wasser absetzen', placed ? 'good' : 'bad');
+}
 function placeRoomba() {
   if (!RB.carried.length) return;
   const p = PL.pos.clone().addScaledVector(PL.f, 1.4); surf(p);
@@ -2284,7 +2304,7 @@ function makeSave() {
     upg: { ...G.upg }, rc: G.roombaCount, shredders: G.shredders.map((s) => s.slice()), removed: W.removed.slice(),
     loose: [...[...G.loose].map(([id, L]) => [id, ...L]), ...FLY.filter((f) => !f.arc).map((f) => [f.id, f.pos.x, f.pos.y, f.pos.z, 0])], inv: G.inv.slice(),
     player: { p: PL.pos.toArray(), f: PL.f.toArray(), pitch: PL.pitch },
-    roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1, r.carry.slice()]), ...RB.carried.map((r) => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z), r.carry.slice()])], ts: Date.now(),
+    roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1, r.carry.slice()]), ...RB.carried.map((r) => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z), r.carry.slice(), 1])], ts: Date.now(),
     st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(), kits: G.kits || 0, kitOwn: (G.kitOwn || []).slice(), coll: b64enc(G.coll),
     veh: { ...G.veh, n: vehCount(), p: VEHS[0].p.toArray(), f: VEHS[0].f.toArray(), items: VEHS[0].items.slice(), list: activeVehs().map((V) => ({ p: V.p.toArray(), f: V.f.toArray(), items: V.items.slice() })) },
   };
@@ -2315,8 +2335,8 @@ function applySave(s) {
   G.st = { ...freshStats(), ...(s.st || {}) }; G.radio = (s.radio || []).slice(); G.ach = (s.ach || []).slice();
   syncShredders();
   RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear();
-  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); const anc = rp[3] != null && rp[3] >= 0 ? rp[3] : shredCell(nearestShredder(p)); const rb = newRoomba(p, tangentOf(p.clone().normalize()), anc); if (Array.isArray(rp[4]) && rp[4].length) { rb.carry = rp[4].filter((id) => isRem(id)); rb.load = rb.carry.reduce((a, id) => a + TYPES[W.type[id]].s, 0); rb.st = rb.carry.length ? 1 : 0; } RB.list.push(rb); }
-  syncRoombaCount();
+  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); const anc = rp[3] != null && rp[3] >= 0 ? rp[3] : shredCell(nearestShredder(p)); const rb = newRoomba(p, tangentOf(p.clone().normalize()), anc); if (Array.isArray(rp[4]) && rp[4].length) { rb.carry = rp[4].filter((id) => isRem(id)); rb.load = rb.carry.reduce((a, id) => a + TYPES[W.type[id]].s, 0); rb.st = rb.carry.length ? 1 : 0; } if (rp[5]) RB.carried.push(rb); else RB.list.push(rb); }
+  syncRoombaCount(); if (RB.carried.length) setTimeout(() => toast(`${RB.carried.length} Roombas unterm Arm 🤖 – tippe „Absetzen“ oder im Menü „Alle hier absetzen“`, 'good'), 2500);
   if (s.player) placePlayer(new THREE.Vector3().fromArray(s.player.p), new THREE.Vector3().fromArray(s.player.f)); else spawnAtShredder();
   PL.pitch = s.player ? s.player.pitch : -0.12;
   updateHeldModel(); MM.dirty = true; trashDirty = natureDirty = true;
@@ -2634,6 +2654,7 @@ function openMenu() {
   showPanel('menu', 'Menü', `<div class="menuBtns">
     <button class="btn" id="mResume">▶️ Weiterspielen</button>
     ${guest ? '<div class="small">Du bist Gast – der Host speichert den Planeten.</div>' : '<button class="btn sec" id="mSave">💾 Speichern</button>'}
+    ${guest ? '' : RB.carried.length ? `<button class="btn sec" id="mRbAll">🤖 Alle ${RB.carried.length} Roombas hier absetzen</button>` : RB.list.length ? '<button class="btn sec" id="mRbAll">🤖 Alle Roombas einsammeln</button>' : ''}
     ${guest ? '' : `<button class="btn grn" id="mInvite">👋 ${NET.mode === 'host' ? 'Einladung anzeigen' : 'Freunde einladen'}</button>`}
     <button class="btn sec" id="mAch">🏆 Erfolge (${G.ach.length}/${ACH.length})</button>
     <button class="btn sec" id="mColl">✨ Sammlung (${collTotalDone()}/${COLL.length})</button>
@@ -2644,6 +2665,7 @@ function openMenu() {
     ${guest ? '' : '<button class="btn sec" id="mExp">📤 Spielstand exportieren / importieren</button>'}
     <button class="btn sec" id="mQuit">🏠 ${guest ? 'Planet verlassen' : 'Speichern & Hauptmenü'}</button></div>`);
   $('#mResume').onclick = closePanel;
+  if ($('#mRbAll')) $('#mRbAll').onclick = () => (RB.carried.length ? placeAllRoombas() : recallRoombas());
   if (!guest) { $('#mSave').onclick = () => saveGame(true); $('#mInvite').onclick = hostStart; $('#mExp').onclick = openExport; }
   $('#mChar').onclick = openCharPanel;
   $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements; $('#mColl').onclick = openCollection;
@@ -2984,7 +3006,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { openMap, openCollection, removeFromGround, importSave, isShot, creditShred, updateRoombas, REM, addRemote, openInvite, VEHS, pickShredder, unKit, MY_UID, get SH() { return SH; }, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { recallRoombas, placeAllRoombas, openMenu, openMap, openCollection, removeFromGround, importSave, isShot, creditShred, updateRoombas, REM, addRemote, openInvite, VEHS, pickShredder, unKit, MY_UID, get SH() { return SH; }, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
