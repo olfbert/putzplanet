@@ -318,6 +318,12 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 @media (max-height:500px){ .logo{font-size:40px} }
 .hstep{display:flex;gap:10px;align-items:flex-start;margin:7px 0;font-size:14px;line-height:1.35}.hstep b.n{min-width:24px;height:24px;border-radius:50%;background:#ffd23f;color:#14202b;display:flex;align-items:center;justify-content:center;font-size:13px}.htab{display:flex;gap:6px;margin-bottom:10px}.htab .btn{flex:1}.htab .btn.on{background:#ffd23f;color:#14202b}
 #rotHint{position:fixed;left:50%;width:min(340px,88vw);box-sizing:border-box;bottom:calc(var(--sb) + 120px);transform:translateX(-50%);z-index:60;display:flex;gap:10px;align-items:center;background:rgba(18,24,40,.94);border:2px solid #ffd23f;border-radius:16px;padding:10px 12px;max-width:88vw;font-size:14px;line-height:1.3}#rotHint .ico{font-size:28px;animation:rotI 1.8s ease-in-out infinite}@keyframes rotI{0%,30%{transform:rotate(0)}60%,100%{transform:rotate(-90deg)}}#rotHint button{background:none;border:0;color:#fff;font-size:18px;padding:4px 6px}
+#btnEmote{position:fixed;right:calc(var(--sr,0px) + 14px);top:calc(var(--st) + 128px);width:46px;height:46px;font-size:20px}
+#btnEmote small{display:none}
+#emoteBar{position:fixed;right:calc(var(--sr,0px) + 66px);top:calc(var(--st) + 124px);display:flex;gap:6px;background:rgba(18,24,40,.92);border:2px solid #ffd23f;border-radius:16px;padding:6px;z-index:50}
+#emoteBar button{font-size:24px;width:44px;height:44px;border:0;border-radius:12px;background:rgba(255,255,255,.08)}
+.emoPop{position:fixed;left:50%;top:42%;transform:translate(-50%,-50%);font-size:72px;z-index:70;pointer-events:none;animation:emoP 1.4s ease-out forwards}
+@keyframes emoP{0%{opacity:0;transform:translate(-50%,-30%) scale(.4)}20%{opacity:1;transform:translate(-50%,-50%) scale(1.15)}100%{opacity:0;transform:translate(-50%,-120%) scale(1)}}
 </style>
 </head>
 <body>
@@ -350,6 +356,8 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
     <button id="btnPlace" class="abtn hidden">🤖<small id="placeN">Absetzen</small></button>
     <button id="btnThrow" class="abtn">💨<small>Werfen</small></button>
     <button id="btnSweep" class="abtn">🧹<small>Fegen</small></button>
+    <button id="btnEmote" class="abtn">😀<small>Emote</small></button>
+    <div id="emoteBar" class="hidden"></div>
     <button id="btnPick" class="abtn">✋<small>Aufheben</small></button>
   </div>
   <div id="joy"><div id="joyKnob"></div></div>
@@ -1671,7 +1679,18 @@ const REM = new Map();
 function makeAvatar(color, name, chr) {
   const c = makeChar(CHAR_PRESETS[clamp(chr | 0, 0, CHAR_PRESETS.length - 1)]); c.g.matrixAutoUpdate = false; scene.add(c.g);
   const label = makeLabel(name || 'Spieler', '#' + new THREE.Color(color).getHexString(), 2.2);
+  // Besen in der rechten Hand
+  const br = new THREE.Group(); const add = (geo, col, x, y, z) => { const m = new THREE.Mesh(geo, lamb(col)); m.position.set(x, y, z); br.add(m); };
+  add(Cy(0.025, 0.025, 1.35, 6), 0xa0703c, 0, 0, 0); add(Bx(0.4, 0.07, 0.1), 0xd62828, 0, -0.68, 0); add(Bx(0.38, 0.18, 0.08), 0xe8c46a, 0, -0.8, 0);
+  br.position.set(0, -0.62, 0.12); br.rotation.set(0.6, 0, 0); c.armR.add(br); c.broom = br;
   return { group: c.g, label, ch: c };
+}
+const EMOTES = [{ i: '👋', n: 'Winken', a: 'wave', d: 2.4 }, { i: '🎉', n: 'Jubeln', a: 'cheer', d: 2.4 }, { i: '💃', n: 'Tanzen', a: 'dance', d: 4 }, { i: '👍', n: 'Daumen', a: 'wave', d: 1.8 }, { i: '😂', n: 'Lachen', a: 'cheer', d: 1.8 }, { i: '❤️', n: 'Herz', a: 'idle', d: 2 }];
+const ACT_DUR = { sweep: 0.6, pick: 0.45, throw: 0.45 };
+function remoteAct(id, a, e = 0) {
+  const o = REM.get(id); if (!o) return; o.act = a; o.actT = performance.now() / 1000;
+  if (a === 'emote') { const E = EMOTES[clamp(e | 0, 0, EMOTES.length - 1)]; o.actD = E.d; o.actA = E.a; if (o.emo) scene.remove(o.emo); o.emo = makeLabel(E.i + ' ' + E.n, '#ffd23f', 2.0); }
+  else { o.actD = ACT_DUR[a] || 0.5; o.actA = a; }
 }
 function addRemote(id, name, color, chr = 0) {
   let o = REM.get(id);
@@ -1680,7 +1699,7 @@ function addRemote(id, name, color, chr = 0) {
   const a = makeAvatar(color, name, chr); o = { id, name, color, chr, ...a, p: new THREE.Vector3(0, R, 0), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(0, R, 0), tf: new THREE.Vector3(0, 0, 1), h: -1, seen: false, spd: 0 };
   REM.set(id, o); return o;
 }
-function removeRemote(id) { const o = REM.get(id); if (!o) return; scene.remove(o.group); scene.remove(o.label); if (o.ch) o.ch.dispose(); REM.delete(id); }
+function removeRemote(id) { const o = REM.get(id); if (!o) return; scene.remove(o.group); scene.remove(o.label); if (o.emo) scene.remove(o.emo); if (o.ch) o.ch.dispose(); REM.delete(id); }
 function clearRemotes() { for (const id of [...REM.keys()]) removeRemote(id); }
 function updateRemotes(dt) {
   for (const o of REM.values()) {
@@ -1689,7 +1708,9 @@ function updateRemotes(dt) {
     o.spd += ((dt > 0 ? _v3.distanceTo(o.p) / dt : 0) - o.spd) * Math.min(1, dt * 6);
     const n = _v1.copy(o.p).normalize(); o.f.addScaledVector(n, -o.f.dot(n)).normalize();
     setObjMatrix(o.group, o.p, n, o.f, 1); o.group.visible = true;
-    if (o.ch) animChar(o.ch, o.spd > 0.5 ? 'walk' : 'idle', performance.now() / 1000, clamp(o.spd / 4.5, 0.7, 1.7));
+    const now = performance.now() / 1000, ae = o.act ? now - o.actT : 99, acting = ae < (o.actD || 0);
+    if (o.ch) { o.ch.actP = acting ? ae / o.actD : 0; o.ch.broom.visible = G.upg.broom > 0; animChar(o.ch, acting ? o.actA : o.spd > 0.5 ? 'walk' : 'idle', now, clamp(o.spd / 4.5, 0.7, 1.7)); }
+    if (o.emo) { if (ae > (o.actD || 0) + 0.6 || o.act !== 'emote') { scene.remove(o.emo); o.emo = null; } else { const ep = _v2.copy(o.p).addScaledVector(n, 2.55 + Math.min(ae, 0.4) * 0.5); o.emo.position.copy(flatCPU(ep.x, ep.y, ep.z, PL.up)); o.emo.visible = o.p.distanceTo(PL.pos) < 70; } }
     const lp = _v2.copy(o.p).addScaledVector(n, 2.05); o.label.position.copy(flatCPU(lp.x, lp.y, lp.z, PL.up)); o.label.visible = o.p.distanceTo(PL.pos) < 70;
   }
 }
@@ -1730,9 +1751,9 @@ function updateViewmodel(dt, moving) {
   vmPivot.rotation.set(0.15, -0.5 + t * 0.0, 0.08);
   vmBroom.visible = G.upg.broom > 0 && !RB.carried.length;
   vmRoomba.visible = RB.carried.length > 0; if (vmRoomba.visible) { vmPivot.visible = false; vmRoomba.position.set(0.3, -0.3 + bob, -0.8); vmRoomba.rotation.set(0.6, t * 0.6, 0.2); vmRoomba.scale.setScalar(0.5); } else vmPivot.visible = true;
-  const sw = vmSweepAnim > 0 ? Math.sin((0.5 - vmSweepAnim) / 0.5 * Math.PI) : 0;
-  vmBroom.position.set(-0.36 + sw * 0.45, -0.6 + Math.abs(bob) * 0.6, -0.95);
-  vmBroom.rotation.set(-1.05 + sw * 0.15, 0.2 - sw * 0.7, 0.6 - sw * 0.5);
+  const sp = vmSweepAnim > 0 ? (0.5 - vmSweepAnim) / 0.5 : 0, sw = vmSweepAnim > 0 ? Math.sin(sp * Math.PI * 2) : 0, dip = vmSweepAnim > 0 ? Math.sin(sp * Math.PI) : 0;
+  vmBroom.position.set(-0.3 + sw * 0.55, -0.6 - dip * 0.18 + Math.abs(bob) * 0.6, -0.95 - dip * 0.15);
+  vmBroom.rotation.set(-1.05 - dip * 0.35, 0.2 - sw * 0.9, 0.6 - sw * 0.7);
 }
 
 // ---------------- Minikarte (Globus) ----------------
@@ -2048,7 +2069,7 @@ function tryPick() {
   if (target < 0) { if (G.upg.broom > 0) doSweep(); return; }
   const id = target, T = TYPES[W.type[id]];
   if (G.inv.length > 0 && invUnits() + T.s > CAP[G.upg.cap].v) { sfx('full'); toast(G.upg.cap === 0 ? 'Hände voll – erst zum Schredder!' : 'Behälter voll! Ab zum Schredder 🏭', 'bad'); flashInv(); if (G.upg.cap === 0 && G.coins >= 12) radio('full'); return; }
-  takeItem(id); netSend({ t: 'rm', ids: [id] });
+  takeItem(id); netSend({ t: 'rm', ids: [id] }); netAct('pick');
   if (G.tut === 0) { G.tut = 1; showHint('Bring den Müll zum Schredder – der Pfeil oben zeigt den Weg'); }
 }
 function takeItem(id, fx = 5) {
@@ -2073,7 +2094,7 @@ function doSweep() {
   cand.sort((a, b) => a[0] - b[0]);
   const got = [];
   for (const [, id] of cand) { const s = TYPES[W.type[id]].s; if (units + s > cap && (G.inv.length + got.length) > 0) break; units += s; got.push(id); }
-  sfx('sweep'); collectAround(ctr, rad, null);
+  sfx('sweep'); netAct('sweep'); spawnBurst(ctr.clone().addScaledVector(cn, 0.15), 10, new THREE.Color(0xcbb38a), 1.4, 0, 1.0); collectAround(ctr, rad, null);
   if (!got.length) { if (!cand.length) toast('Hier gibt es nichts zu fegen'); else { toast('Behälter voll! Ab zum Schredder 🏭', 'bad'); flashInv(); } return; }
   const from = camera.position.clone().addScaledVector(PL.up, -0.6);
   got.forEach((id, k) => { const L = G.loose.get(id); const p = L ? new THREE.Vector3(L[0], L[1], L[2]) : new THREE.Vector3(W.pos[id * 3], W.pos[id * 3 + 1], W.pos[id * 3 + 2]); takeItem(id, k < 6 ? 2 : 0); if (k < 10) addArcFlyer(id, p, from, k * 0.03, -1); });
@@ -2099,7 +2120,7 @@ function placeRoomba() {
 }
 function doThrow() {
   if (!G.inv.length) return;
-  const id = G.inv.pop(); updateHeldModel();
+  const id = G.inv.pop(); updateHeldModel(); netAct('throw');
   camera.getWorldDirection(CAM_FWD);
   const pos = camera.position.clone().addScaledVector(CAM_FWD, 0.6).addScaledVector(PL.up, -0.25);
   const vel = CAM_FWD.clone().multiplyScalar(10).addScaledVector(PL.up, 2.6).add(PL.vel);
@@ -2304,6 +2325,7 @@ function loadPeerJS() {
   return new Promise((res) => { const s = document.createElement('script'); s.src = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js'; s.onload = () => res(!!window.Peer); s.onerror = () => res(false); document.head.appendChild(s); setTimeout(() => res(!!window.Peer), 12000); });
 }
 const myName = () => (localStorage.getItem('pp_name') || '').trim() || 'Putzi';
+function netAct(a, e = 0) { if (NET.mode === 'guest') netSend({ t: 'act', a, e }); else if (NET.mode === 'host') netBroadcast({ t: 'act', id: NET.myId, a, e }); }
 function netSend(m) { if (NET.mode === 'guest' && NET.host && NET.host.open) { try { NET.host.send(m); } catch (e) { } } }
 function netBroadcastRm(ids, except) { for (let i = 0; i < ids.length; i += 1500) netBroadcast({ t: 'rm', ids: ids.slice(i, i + 1500) }, except); }
 function netBroadcast(m, except) { if (NET.mode !== 'host') return; for (const [c, info] of NET.conns) if (c !== except && c.open && info.ready) { try { c.send(m); } catch (e) { } } }
@@ -2366,6 +2388,7 @@ function hostOnData(conn, info, m) {
       else if (m.a === 'out' && VEH.driver === info.id) { VEH.driver = -1; if (m.p) { VEH.tp.fromArray(m.p); VEH.tf.fromArray(m.f); } for (const id of (m.items || []).slice(0, 200)) if (typeof id === 'number' && id >= 0 && id < TOTAL && isRem(id)) { VEH.items.push(id); VEH.load += TYPES[W.type[id]].s; } }
       break;
     }
+    case 'act': { if (typeof m.a === 'string' && m.a.length < 10) { remoteAct(info.id, m.a, m.e); netBroadcast({ t: 'act', id: info.id, a: m.a, e: m.e | 0 }, conn); } break; }
     case 'me': { if (m.v && VEH.driver === info.id) { VEH.tp.set(m.v[0], m.v[1], m.v[2]); VEH.tf.set(m.v[3], m.v[4], m.v[5]); }
       const o = REM.get(info.id); if (o && m.p) { o.tp.fromArray(m.p); o.tf.fromArray(m.f); if (!o.seen) { o.p.copy(o.tp); o.f.copy(o.tf); o.seen = true; } o.h = m.h; } info.p = m.p; info.f = m.f; info.pi = m.pi; info.h = m.h; break; }
     case 'rm': {
@@ -2439,6 +2462,7 @@ function guestOnData(m, conn, peer) {
     case 'fx': { const s = SH[m.si]; if (s) { s.anim = 0.7; if (s.p.distanceTo(PL.pos) < 45) spawnBurst(s.p.clone().addScaledVector(s.n, 0.35).addScaledVector(s.f, 1.1 * s.sc), 3, WHITE_C, 1.6, 1, 3.5); } break; }
     case 'veh': { if (m.a === 'ok') doEnter(); else { VEH.waitReply = false; toast('Da sitzt schon jemand drin'); } break; }
     case 'up': { G.kits = m.kits || 0; G.upg = { combo: 0, ...m.upg }; G.roombaCount = m.rc; G.coins = m.c; if (m.veh) { const was = G.veh.owned; G.veh = m.veh; if (!was && m.veh.owned && m.vp) { placeVehicle(new THREE.Vector3().fromArray(m.vp), new THREE.Vector3().fromArray(m.vf)); } } if (JSON.stringify(m.shr) !== JSON.stringify(G.shredders)) { G.shredders = m.shr; syncShredders(); } if (PANEL === 'shop') renderShop(); break; }
+    case 'act': { if (m.id !== NET.myId) remoteAct(m.id, m.a, m.e); break; }
     case 'cgot': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; if (m.by) toast(`${m.by} hat ein Fundstück entdeckt ✨`); } break; }
     case 'pl': syncRoster(m.list); break;
     case 'msg': toast(m.txt, m.bad ? 'bad' : ''); break;
@@ -2785,7 +2809,16 @@ async function renderTitle() {
 }
 $('#nameIn').addEventListener('input', (e) => localStorage.setItem('pp_name', e.target.value.trim()));
 $('#btnJoin').onclick = () => joinGame($('#codeIn').value);
-setupHomeGuide(); $('#rotX').onclick = (e) => { e.stopPropagation(); rotDismissed = true; updateRotHint(); };
+setupHomeGuide();
+// Emotes
+$('#emoteBar').innerHTML = EMOTES.map((E, i) => `<button data-e="${i}" title="${E.n}">${E.i}</button>`).join('');
+$('#btnEmote').onclick = (e) => { e.stopPropagation(); $('#emoteBar').classList.toggle('hidden'); };
+for (const b of $('#emoteBar').children) b.onclick = (e) => { e.stopPropagation(); doEmote(+b.dataset.e); $('#emoteBar').classList.add('hidden'); };
+function doEmote(i) {
+  const E = EMOTES[i]; netAct('emote', i); sfx('page');
+  const d = document.createElement('div'); d.className = 'emoPop'; d.textContent = E.i; document.body.appendChild(d); setTimeout(() => d.remove(), 1400);
+  if (NET.mode === 'solo' || !REM.size) toast(E.i + ' ' + E.n + ' – im Multiplayer sehen das deine Freunde');
+} $('#rotX').onclick = (e) => { e.stopPropagation(); rotDismissed = true; updateRotHint(); };
 async function startSlot(i, fresh) {
   auInit(); loadTip(); $('#loadTxt').textContent = 'Verteile 100.000 Müllteile …'; $('#loading').classList.remove('hidden'); $('#title').classList.add('hidden');
   await sleep(30);
@@ -2888,7 +2921,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { REM, addRemote, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -4253,6 +4286,21 @@ function animChar(c, mode, t, spd = 1) {
     c.armL.rotation.set(0.15, 0, 0.18); c.armR.rotation.set(0.15, 0, -0.18);
     if (c.sp.handsBehind) { c.armL.rotation.set(-2.7, 0, -0.5); c.armR.rotation.set(-2.7, 0, 0.5); }
     b.position.y = 0; b.rotation.set(Math.sin(ph * 0.6) * 0.008, 0, 0);
+  } else if (mode === 'sweep') { // Besen links-rechts
+    const s = Math.sin(t * 13);
+    c.armR.rotation.set(-0.85 + s * 0.2, 0, -0.25 + s * 0.45); c.armL.rotation.set(-1.0 + s * 0.2, 0, 0.35 + s * 0.45);
+    c.legL.rotation.x = 0.12; c.legR.rotation.x = -0.12; b.position.set(0, -0.03, 0); b.rotation.set(0.22, s * 0.35, 0);
+  } else if (mode === 'pick' || mode === 'throw') { // bücken bzw. werfen, c.actP = 0..1
+    const k = Math.sin(clamp(c.actP || 0, 0, 1) * Math.PI);
+    if (mode === 'pick') { c.armL.rotation.set(-1.3 * k, 0, 0.1); c.armR.rotation.set(-1.3 * k, 0, -0.1); c.legL.rotation.x = c.legR.rotation.x = 0.35 * k; b.rotation.set(0.55 * k, 0, 0); b.position.set(0, -0.12 * k, -0.3 * k); }
+    else { const p = clamp(c.actP || 0, 0, 1); c.armR.rotation.set(-2.8 + p * 3.4, 0, -0.2); c.armL.rotation.set(0.3, 0, 0.15); c.legL.rotation.x = c.legR.rotation.x = 0; b.rotation.set(-0.15 + p * 0.35, -0.3 + p * 0.6, 0); b.position.set(0, 0, 0); }
+  } else if (mode === 'cheer') {
+    const s = Math.sin(ph * 9); c.armL.rotation.set(0, 0, 2.7 + s * 0.25); c.armR.rotation.set(0, 0, -2.7 - s * 0.25);
+    c.legL.rotation.x = c.legR.rotation.x = 0; b.position.set(0, Math.abs(Math.sin(ph * 6)) * 0.3, 0); b.rotation.set(0, 0, 0);
+  } else if (mode === 'dance') {
+    const s = Math.sin(ph * 6), q = Math.sin(ph * 12);
+    c.armL.rotation.set(0, 0, 1.4 + s * 1.1); c.armR.rotation.set(0, 0, -1.4 + s * 1.1); c.legL.rotation.x = Math.max(0, q) * 0.5; c.legR.rotation.x = Math.max(0, -q) * 0.5;
+    b.position.set(s * 0.08, Math.abs(q) * 0.06, 0); b.rotation.set(0, s * 0.6, s * 0.12);
   } else if (mode === 'wave') {
     c.legL.rotation.x = c.legR.rotation.x = 0; c.armR.rotation.set(0, 0, -0.09);
     c.armL.rotation.set(0, 0, 2.6 + Math.sin(ph * 8) * 0.3); b.position.y = 0; b.rotation.set(0, 0, 0);

@@ -24,7 +24,7 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Ausgestellt in der betretbaren Resort-Lobby: Podeste zeigen „???“ oder den Stand (z. B. 23/100) – was dabei herauskommt, sieht man erst, wenn die Sammlung voll ist
 - 42 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
-- Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert); 10 Spielfiguren zur Auswahl
+- Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert); 10 Spielfiguren zur Auswahl; Mitspieler sieht man fegen, aufheben und werfen, dazu 6 Emotes (😀-Knopf)
 
 **Steuerung:** Handy – links ziehen laufen, rechts wischen umsehen, tippen aufheben. PC – WASD, Maus, E aufheben, F fegen, Q werfen, R Roomba absetzen, V ein-/aussteigen, M Karte, B Shop.
 
