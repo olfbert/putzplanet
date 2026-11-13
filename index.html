@@ -1937,6 +1937,7 @@ function onCellChanged(c) {
 function addCoins(v) { G.coins += v; G.totalCoins += v; }
 function tryPick() {
   if (targetRb >= 0) { pickRoomba(targetRb); return; }
+  if (target < 0 && openShopTap()) return;
   if (target < 0) { if (G.upg.broom > 0) doSweep(); return; }
   const id = target, T = TYPES[W.type[id]];
   if (G.inv.length > 0 && invUnits() + T.s > CAP[G.upg.cap].v) { sfx('full'); toast(G.upg.cap === 0 ? 'Hände voll – erst zum Schredder!' : 'Behälter voll! Ab zum Schredder 🏭', 'bad'); flashInv(); if (G.upg.cap === 0 && G.coins >= 12) radio('full'); return; }
@@ -2019,7 +2020,7 @@ function creditShred(ids, si, by, roomba = false, mults = null) {
   for (const id of ids) G.loose.delete(id);
   const s = SH[si];
   if (s) { if (s.p.distanceTo(PL.pos) < 45) for (let k = 0; k < Math.min(8, 2 + ids.length); k++) spawnBurst(s.p.clone().addScaledVector(s.n, 0.35).addScaledVector(s.f, 1.1 * s.sc), 1, WHITE_C, 1.6, 1, 3.5); s.anim = Math.max(s.anim, 0.5); }
-  if (by === 'me') { floatCoins('+' + fmt(v)); setTimeout(() => sfx('coin'), 350); radio('firstCoin'); if (G.tut === 1) { G.tut = 2; showHint('Super! Im Putz-Markt neben Schreddi gibt es Eimer, Besen, Schuhe und Roombas', 6000); } }
+  if (by === 'me') { floatCoins('+' + fmt(v)); setTimeout(() => sfx('coin'), 350); radio('firstCoin'); if (G.tut === 1) { G.tut = 2; showHint('Super! Tippe den Putz-Markt neben Schreddi an – dort gibt es Eimer, Besen, Schuhe und Roombas', 6000); } }
   if (NET.mode === 'host') netBroadcast({ t: 'fx', si, v, n: ids.length, by: roomba ? 'r' : by });
   checkWin();
 }
@@ -2383,7 +2384,7 @@ function renderShop() {
   }
   const sc = costOf('shredder');
   rows.push(item('shredder', '🏭', 'Mini-Schredder-Bausatz', `${G.shredders.length - 1}/${SHRED_MAX} aufgestellt${G.kits ? ` · ${G.kits} Bausatz im Gepäck` : ''}`, 'Nimmst du mit und stellst ihn auf, wo du willst – mit eigenem Shop-Automaten', sc, sc == null));
-  if (!atShop) rows.unshift(`<div class="shopHint">🛒 Das ist der Katalog. Kaufen kannst du im <b>Putz-Markt</b> neben Schreddi oder an den Automaten der Mini-Schredder – nächster in ${fmt(shopDistance())} m.</div>`);
+  if (!atShop) rows.unshift(`<div class="shopHint">🛒 Das ist der Katalog. Kaufen kannst du im <b>Putz-Markt</b> neben Schreddi oder an den Automaten der Mini-Schredder – einfach hingehen und antippen. Nächster in ${fmt(shopDistance())} m.</div>`);
   if (PANEL !== 'shop') showPanel('shop', atShop ? 'Putz-Markt' : 'Katalog', rows.join(''));
   else { $('#panelTitle').textContent = atShop ? 'Putz-Markt' : 'Katalog'; $('#panelBody').innerHTML = rows.join(''); }
   $('#panelExtra').innerHTML = CI + ' ' + fmt(coins) + (NET.mode === 'guest' ? ' (Team)' : '');
@@ -2514,7 +2515,11 @@ function updateHUD(dt) {
   $('#btnPick').classList.toggle('hidden', drv); $('#cross').classList.toggle('hidden', drv);
   const vb = $('#btnVeh'), showV = drv || vehNear(); vb.classList.toggle('hidden', !showV);
   if (showV) { const lbl = drv ? 'Aussteigen' : 'Einsteigen'; if (vb.dataset.l !== lbl) { vb.dataset.l = lbl; vb.querySelector('small').textContent = lbl; vb.classList.toggle('exit', drv); } }
-  if (target < 0 && targetRb < 0) $('#btnPick').classList.add('dim');
+  if (target < 0 && targetRb < 0) {
+    const el = $('#targetLbl'), pb = $('#btnPick');
+    if (STR.aim) { const t = STR.aim === 'markt' ? '🛒 Putz-Markt · <b>antippen zum Einkaufen</b>' : '🛒 Shop-Automat · <b>antippen</b>'; if (el.innerHTML !== t) el.innerHTML = t; el.classList.add('on'); $('#cross').classList.add('on'); pb.classList.remove('dim'); if (!pb.dataset.shop) { pb.dataset.shop = '1'; pb.querySelector('small').textContent = 'Einkaufen'; } }
+    else { el.classList.remove('on'); $('#cross').classList.remove('on'); pb.classList.add('dim'); if (pb.dataset.shop) { delete pb.dataset.shop; pb.querySelector('small').textContent = 'Aufheben'; } }
+  } else { const pb = $('#btnPick'); if (pb.dataset.shop) { delete pb.dataset.shop; pb.querySelector('small').textContent = 'Aufheben'; } }
   const kb = $('#btnKit'), kn = drv ? 0 : (G.kits || 0); kb.classList.toggle('hidden', !kn); if (kn) $('#kitN').textContent = kn > 1 ? `Aufstellen ×${kn}` : 'Aufstellen';
   const pc = drv ? 0 : RB.carried.length; $('#btnPlace').classList.toggle('hidden', !pc); if (pc) $('#placeN').textContent = pc > 1 ? `Absetzen ×${pc}` : 'Absetzen';
   // Müll-Radar für die letzten Teile, sonst Kompass zum nächsten Schredder
@@ -2719,7 +2724,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3866,15 +3871,28 @@ function updateShopModel(dt) {
   const d = S.o.p.distanceTo(PL.pos); S.label.visible = VIEW.mode === 'play' && d > 9 && d < 70;
 }
 // ---------- Einkaufen nur im Laden ----------
-function shopSpots() { const l = []; if (STR.shop) l.push([STR.shop.zone, 3.4]); for (const s of SH) if (s.vend) l.push([s.vend, 2.6]); return l; }
+function shopSpots() { const l = []; if (STR.shop) l.push([STR.shop.zone, 4.2]); for (const s of SH) if (s.vend) l.push([s.vend, 3.2]); return l; }
 function nearShop() { const slack = VEH.driving ? 2.5 : 0; for (const [p, r] of shopSpots()) if (p.distanceTo(PL.pos) < r + slack) return true; return false; }
 function shopDistance() { let d = 1e9; for (const [p] of shopSpots()) d = Math.min(d, R * Math.acos(clamp(p.clone().normalize().dot(PL.up), -1, 1))); return d; }
+// Wird der Laden (Roboter/Theke) oder ein Automat gerade angeschaut?
+const _sa = new THREE.Vector3();
+function shopAimTargets() { const l = []; if (STR.shop) l.push([localToWorld(STR.shop.o, 0, 1.3, 0.8, new THREE.Vector3()), true]); for (const s of SH) if (s.vend) l.push([s.vend.clone().addScaledVector(s.n, 1.0 * s.sc).addScaledVector(s.f, -0.5 * s.sc), false]); return l; }
+function updateShopAim() {
+  STR.aim = null; if (VEH.driving || !G.running || VIEW.mode !== 'play') return;
+  camera.getWorldDirection(CAM_FWD); let best = 0.8;
+  for (const [p, main] of shopAimTargets()) {
+    _sa.subVectors(p, camera.position); const d = _sa.length(); if (d > (main ? 7.5 : 5)) continue;
+    const dot = _sa.normalize().dot(CAM_FWD); if (dot > best) { best = dot; STR.aim = main ? 'markt' : 'automat'; }
+  }
+}
+function openShopTap() {
+  if (!STR.aim) return false;
+  if (STR.aim === 'markt' && performance.now() - STR.greetT > 30000) { STR.greetT = performance.now(); toast(pick(SHOP_HELLO)); sfx('radio'); } else sfx('page');
+  renderShop(); return true;
+}
 function updateShopZone(dt) {
-  const inS = nearShop();
-  if (inS && !STR.inShop && G.running && VIEW.mode === 'play') {
-    STR.inShop = true;
-    if (!PANEL) { renderShop(); const atMain = STR.shop && STR.shop.zone.distanceTo(PL.pos) < 4; if (atMain && performance.now() - STR.greetT > 30000) { STR.greetT = performance.now(); toast(pick(SHOP_HELLO), ''); sfx('radio'); } }
-  } else if (!inS && STR.inShop) { STR.inShop = false; if (PANEL === 'shop') renderShop(); }
+  const inS = nearShop(); updateShopAim();
+  if (inS !== STR.inShop) { STR.inShop = inS; if (PANEL === 'shop') renderShop(); }
 }
 const SHOP_HELLO = ['🤖 Krämer-Bot: Willkommen im Putz-Markt! Heute im Angebot: alles.', '🤖 Krämer-Bot: Schön, dich zu sehen! Deine Münzen auch.', '🤖 Krämer-Bot: Frisch eingetroffen: Besen. Wie immer.', '🤖 Krämer-Bot: Kein Umtausch bei Schwarzen Löchern.'];
 function syncStructs() {
