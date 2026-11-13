@@ -8,11 +8,13 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 
 - Kugelplanet mit Hügeln, Seen, Wäldern, Wiesen und Felsen – rundherum begehbar, ohne dass man die Wölbung merkt
 - Aufheben, Fegen, Werfen; Schreddi 3000 zahlt pro Teil Münzen
-- Shop: Behälter, Besen, Schuhe, Greifweite, Turbo, Roombas (mit Motor-, Tank- und Funk-Upgrades), Mini-Schredder
+- Putz-Markt neben Schreddi (und Automaten an jedem Mini-Schredder): nur dort wird eingekauft
+- Resort „Hotel Blühonia“ mit Pool, das mit dem Fortschritt öffnet und Gäste bekommt
+- Shop-Angebot: Behälter, Besen, Schuhe, Greifweite, Turbo, Roombas (mit Motor-, Tank- und Funk-Upgrades), Mini-Schredder
 - Roombas lassen sich aufheben und woanders absetzen; ist ihr Gebiet leer, ziehen sie selbst zum nächsten Schredder mit Arbeit
 - Bodenloser Korb als letzte Behälter-Stufe (fasst unendlich, 150.000 Münzen)
 - Cheats im Menü: +5.000 Münzen, Supermagnet (saugt ein Viertel des Planeten leer)
-- Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5
+- Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5, der Bonus wird beim Ablaufen ausgezahlt
 - Kehrmaschine „Kehrmaxx“ zum Reinsetzen (Third-Person), mit Bordschredder und Motor-Upgrades
 - Roombas sehen je nach Upgrade anders aus (5 Modelle, wachsen mit dem Tank)
 - Aufklappbare Weltkarte (Tipp auf den Globus): Seen, Wälder, Müll, Schredder, Roombas, Mitspieler, Ziel setzen
