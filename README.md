@@ -22,7 +22,7 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Preise so ausgelegt, dass man alles kaufen kann, wenn etwa drei Viertel geschafft sind
 - 39 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
-- Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert)
+- Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert); 10 Spielfiguren zur Auswahl
 
 **Steuerung:** Handy – links ziehen laufen, rechts wischen umsehen, tippen aufheben. PC – WASD, Maus, E aufheben, F fegen, Q werfen, R Roomba absetzen, V ein-/aussteigen, M Karte, B Shop.
 

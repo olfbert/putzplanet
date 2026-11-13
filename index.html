@@ -290,6 +290,12 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 @media (max-width:560px){ .mapHead{flex-wrap:wrap} #mapInfo{order:3;flex-basis:100%} }
 #btnKit{width:56px;height:56px;right:150px;bottom:74px;border-color:#7ff0d0;background:rgba(20,80,70,.8)}
 .shopHint{background:rgba(90,180,255,.14);border:1px solid rgba(90,180,255,.45);border-radius:14px;padding:9px 11px;font-size:12.5px;margin-bottom:8px}
+.charPick{display:flex;gap:6px;overflow-x:auto;touch-action:pan-x;padding:2px 2px 8px;margin-bottom:6px;-webkit-overflow-scrolling:touch}
+.charPick.grid{flex-wrap:wrap;overflow:visible;justify-content:center}
+.chr{pointer-events:auto;flex:0 0 auto;width:76px;border-radius:14px;background:rgba(255,255,255,.07);border:2px solid transparent;padding:3px 2px 4px;display:flex;flex-direction:column;align-items:center;gap:1px}
+.chr img{width:70px;height:93px;object-fit:contain}
+.chr span{font-size:11px}
+.chr.on{border-color:#ffd23f;background:rgba(255,210,63,.16)}
 #btnVeh{width:62px;height:62px;right:84px;bottom:58px;border-color:#f4a300;background:rgba(80,50,0,.75)}
 #btnVeh.exit{right:0;bottom:0;width:70px;height:70px;background:rgba(214,40,40,.8);border-color:#ff9a9a}
 
@@ -373,6 +379,8 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
     </div>
     <div class="card">
       <div class="lbl">Bei Freunden mitputzen</div>
+      <div class="small" style="margin:0 2px 4px">Deine Figur</div>
+      <div id="charPick" class="charPick"></div>
       <div class="row" style="margin-bottom:8px"><input id="nameIn" maxlength="14" placeholder="Dein Name"></div>
       <div class="row"><input id="codeIn" maxlength="6" placeholder="Code" style="text-transform:uppercase;letter-spacing:3px"><button id="btnJoin" class="btn grn">Beitreten</button></div>
       <div id="joinMsg" class="small" style="margin-top:6px"></div>
@@ -1576,32 +1584,28 @@ function updateFlyers(dt) {
 
 // ---------------- Andere Spieler ----------------
 const REM = new Map();
-function makeAvatar(color, name) {
-  const g = new THREE.Group(); g.matrixAutoUpdate = false;
-  const mb = lamb(color), skin = lamb(0xffd7b5), dark = lamb(0x1d2733);
-  const add = (geo, mat, ...o) => { ops(geo, o); const m = new THREE.Mesh(geo, mat); m.frustumCulled = false; g.add(m); return m; };
-  add(new THREE.CapsuleGeometry(0.27, 0.62, 4, 10), mb, ['t', 0, 0.62, 0]);
-  add(Sp(0.22, 12, 10), skin, ['t', 0, 1.42, 0]);
-  add(Sp(0.035, 6, 4), dark, ['t', 0.08, 1.46, 0.19]); add(Sp(0.035, 6, 4), dark, ['t', -0.08, 1.46, 0.19]);
-  add(Cy(0.23, 0.23, 0.08, 12), mb, ['t', 0, 1.6, 0]); add(Bx(0.3, 0.03, 0.18), mb, ['t', 0, 1.58, 0.2]);
-  add(Bx(0.36, 0.42, 0.18), dark, ['t', 0, 0.85, -0.26]);
-  scene.add(g);
+function makeAvatar(color, name, chr) {
+  const c = makeChar(CHAR_PRESETS[clamp(chr | 0, 0, CHAR_PRESETS.length - 1)]); c.g.matrixAutoUpdate = false; scene.add(c.g);
   const label = makeLabel(name || 'Spieler', '#' + new THREE.Color(color).getHexString(), 2.2);
-  return { group: g, label };
+  return { group: c.g, label, ch: c };
 }
-function addRemote(id, name, color) {
-  if (REM.has(id)) return REM.get(id);
-  const a = makeAvatar(color, name); const o = { id, name, color, ...a, p: new THREE.Vector3(0, R, 0), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(0, R, 0), tf: new THREE.Vector3(0, 0, 1), h: -1, seen: false };
+function addRemote(id, name, color, chr = 0) {
+  let o = REM.get(id);
+  if (o && o.chr === chr) return o;
+  if (o) { scene.remove(o.group); o.ch.dispose(); const a = makeAvatar(color, name, chr); scene.remove(a.label); o.group = a.group; o.ch = a.ch; o.chr = chr; return o; }
+  const a = makeAvatar(color, name, chr); o = { id, name, color, chr, ...a, p: new THREE.Vector3(0, R, 0), f: new THREE.Vector3(0, 0, 1), tp: new THREE.Vector3(0, R, 0), tf: new THREE.Vector3(0, 0, 1), h: -1, seen: false, spd: 0 };
   REM.set(id, o); return o;
 }
-function removeRemote(id) { const o = REM.get(id); if (!o) return; scene.remove(o.group); scene.remove(o.label); REM.delete(id); }
+function removeRemote(id) { const o = REM.get(id); if (!o) return; scene.remove(o.group); scene.remove(o.label); if (o.ch) o.ch.dispose(); REM.delete(id); }
 function clearRemotes() { for (const id of [...REM.keys()]) removeRemote(id); }
 function updateRemotes(dt) {
   for (const o of REM.values()) {
     if (!o.seen || (G.veh.owned && VEH.driver === o.id)) { o.group.visible = false; o.label.visible = false; continue; }
-    o.p.lerp(o.tp, 1 - Math.exp(-dt * 10)); o.f.lerp(o.tf, 1 - Math.exp(-dt * 10));
+    _v3.copy(o.p); o.p.lerp(o.tp, 1 - Math.exp(-dt * 10)); o.f.lerp(o.tf, 1 - Math.exp(-dt * 10));
+    o.spd += ((dt > 0 ? _v3.distanceTo(o.p) / dt : 0) - o.spd) * Math.min(1, dt * 6);
     const n = _v1.copy(o.p).normalize(); o.f.addScaledVector(n, -o.f.dot(n)).normalize();
     setObjMatrix(o.group, o.p, n, o.f, 1); o.group.visible = true;
+    if (o.ch) animChar(o.ch, o.spd > 0.5 ? 'walk' : 'idle', performance.now() / 1000, clamp(o.spd / 4.5, 0.7, 1.7));
     const lp = _v2.copy(o.p).addScaledVector(n, 2.05); o.label.position.copy(flatCPU(lp.x, lp.y, lp.z, PL.up)); o.label.visible = o.p.distanceTo(PL.pos) < 70;
   }
 }
@@ -2203,7 +2207,7 @@ function netBroadcastState(full) {
   if (NET.mode !== 'host') return;
   if (full) netBroadcast({ t: 'up', kits: G.kits || 0, upg: G.upg, rc: G.roombaCount, shr: G.shredders, c: G.coins, veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray() });
 }
-function rosterList() { const l = [[0, myName(), PCOLORS[0]]]; for (const info of NET.conns.values()) if (info.ready) l.push([info.id, info.name, info.color]); return l; }
+function rosterList() { const l = [[0, myName(), PCOLORS[0], myChar()]]; for (const info of NET.conns.values()) if (info.ready) l.push([info.id, info.name, info.color, info.chr | 0]); return l; }
 async function hostStart() {
   if (NET.mode === 'host') { openInvite(); return; }
   toast('Öffne den Planeten für Freunde …');
@@ -2238,17 +2242,18 @@ function hostOnData(conn, info, m) {
   if (!m || typeof m !== 'object') return;
   switch (m.t) {
     case 'hello': {
-      info.name = String(m.name || 'Gast').slice(0, 14); info.ready = true;
+      info.name = String(m.name || 'Gast').slice(0, 14); info.ready = true; info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
       const snap = JSON.stringify({ seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray(), vd: VEH.driving ? 0 : VEH.driver });
       const CH_ = 14000, n = Math.ceil(snap.length / CH_);
       for (let i = 0; i < n; i++) conn.send({ t: 'snap', i, n, d: snap.slice(i * CH_, (i + 1) * CH_) });
-      addRemote(info.id, info.name, info.color);
+      addRemote(info.id, info.name, info.color, info.chr);
       toast(`${info.name} putzt jetzt mit! 🎉`, 'good'); sfx('buy'); G.st.friends = 1; radio('friend');
       netBroadcast({ t: 'pl', list: rosterList() }, conn); netBroadcast({ t: 'msg', txt: `${info.name} ist beigetreten` }, conn);
       updateMpBadge(); if (!$('#panelWrap').classList.contains('hidden') && PANEL === 'invite') openInvite();
       break;
     }
     case 'kitp': { const r = Array.isArray(m.p) ? placeKit(m.p) : 'none'; if (r === 'ok') { toast(`${info.name} hat einen Mini-Schredder aufgestellt`); conn.send({ t: 'msg', txt: 'Mini-Schredder aufgestellt! 🏭' }); } else conn.send({ t: 'msg', txt: KIT_ERR[r], bad: true }); netBroadcastState(true); break; }
+    case 'char': { info.chr = clamp(m.c | 0, 0, CHAR_PRESETS.length - 1); addRemote(info.id, info.name, info.color, info.chr); netBroadcast({ t: 'pl', list: rosterList() }); break; }
     case 'cb': { const v = clamp(+m.v || 0, 0, 250000); if (v > 0) { addCoins(v); toast(`${info.name}: Combo-Bonus +${fmt(v)}`); } break; }
     case 'veh': {
       if (m.a === 'in') { if (G.veh.owned && VEH.driver < 0 && !VEH.driving) { VEH.driver = info.id; conn.send({ t: 'veh', a: 'ok' }); } else conn.send({ t: 'veh', a: 'busy' }); }
@@ -2298,7 +2303,7 @@ async function joinGame(code) {
   peer.on('open', () => {
     const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' });
     NET.snap = { parts: [], got: 0 };
-    conn.on('open', () => { conn.send({ t: 'hello', name: myName(), v: 1 }); msg.textContent = 'Lade Planet vom Host …'; });
+    conn.on('open', () => { conn.send({ t: 'hello', name: myName(), v: 1, chr: myChar() }); msg.textContent = 'Lade Planet vom Host …'; });
     conn.on('data', (m) => { if (m && m.t === 'snap') { clearTimeout(to); } guestOnData(m, conn, peer); });
     conn.on('close', () => { if (NET.mode === 'guest') { toast('Verbindung zum Host verloren', 'bad'); leaveToTitle(); } else fail('Verbindung geschlossen.'); });
   });
@@ -2332,7 +2337,7 @@ function guestOnData(m, conn, peer) {
     case 'msg': toast(m.txt, m.bad ? 'bad' : ''); break;
   }
 }
-function syncRoster(list) { const ids = new Set(); for (const [id, name, color] of list) { if (id === NET.myId) continue; ids.add(id); addRemote(id, name, color); } for (const id of [...REM.keys()]) if (!ids.has(id)) removeRemote(id); updateMpBadge(); }
+function syncRoster(list) { const ids = new Set(); for (const [id, name, color, chr] of list) { if (id === NET.myId) continue; ids.add(id); addRemote(id, name, color, chr | 0); } for (const id of [...REM.keys()]) if (!ids.has(id)) removeRemote(id); updateMpBadge(); }
 function startGuest(s, conn, peer) {
   NET.mode = 'guest'; NET.host = conn; NET.peer = peer; NET.myId = s.you; NET.myColor = s.color; NET.hostName = s.host;
   genWorld(s.seed); updateGroundGeometry(); W.removed.set(b64dec(s.removed)); recountCells(); refreshAllGround();
@@ -2397,6 +2402,7 @@ function openMenu() {
     ${guest ? '<div class="small">Du bist Gast – der Host speichert den Planeten.</div>' : '<button class="btn sec" id="mSave">💾 Speichern</button>'}
     ${guest ? '' : `<button class="btn grn" id="mInvite">👋 ${NET.mode === 'host' ? 'Einladung anzeigen' : 'Freunde einladen'}</button>`}
     <button class="btn sec" id="mAch">🏆 Erfolge (${G.ach.length}/${ACH.length})</button>
+    <button class="btn sec" id="mChar">🧍 Figur wählen (${CHAR_PRESETS[myChar()].name})</button>
     <button class="btn sec" id="mStats">📊 Statistik</button>
     ${guest ? '' : '<button class="btn sec" id="mCheat">🧪 Cheats</button>'}
     <button class="btn sec" id="mStory">📖 Die Geschichte nochmal</button>
@@ -2406,6 +2412,7 @@ function openMenu() {
   $('#mResume').onclick = closePanel;
   if (!guest) { $('#mSave').onclick = () => saveGame(true); $('#mInvite').onclick = hostStart; $('#mExp').onclick = openExport; }
   if (!guest) $('#mCheat').onclick = openCheats;
+  $('#mChar').onclick = openCharPanel;
   $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements;
   $('#mStory').onclick = () => { closePanel(); G.running = false; $('#hud').classList.add('hidden'); showStory(() => { G.running = true; $('#hud').classList.remove('hidden'); }); };
   $('#mQuit').onclick = async () => { if (!guest) await saveGame(); leaveToTitle(); };
@@ -2621,6 +2628,7 @@ async function renderTitle() {
   box.querySelectorAll('[data-new]').forEach((b) => (b.onclick = () => startSlot(+b.dataset.new, true)));
   box.querySelectorAll('[data-del]').forEach((b) => (b.onclick = async () => { if (await confirmModal(`Planet ${b.dataset.del} wirklich löschen?`, 'Löschen')) { await storeDel('slot' + b.dataset.del); renderTitle(); } }));
   $('#nameIn').value = localStorage.getItem('pp_name') || '';
+  bindCharPicker($('#charPick'));
 }
 $('#nameIn').addEventListener('input', (e) => localStorage.setItem('pp_name', e.target.value.trim()));
 $('#btnJoin').onclick = () => joinGame($('#codeIn').value);
@@ -2716,6 +2724,7 @@ async function boot() {
     $('#loadTxt').textContent = 'Lade Modelle …'; await loadAssets(); await sleep(10);
     $('#loadTxt').textContent = 'Baue Müll …'; buildTypes(); await sleep(10);
     buildGroundMeshes(); initRenderGroups(); initRoombaMeshes(); initParticles(); initMinimap(); initOrbit(); initFauna();
+    try { makeCharThumbs(); } catch (e) { console.warn('Vorschau', e); }
     await storeInit();
     $('#loadTxt').textContent = 'Erschaffe Planet …'; await sleep(10);
     let seed = 20261112; try { const s1 = await storeGet('slot1'); if (s1) seed = s1.seed; } catch (e) { }
@@ -2724,7 +2733,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3703,14 +3712,18 @@ function palm(add, x, z, h, lean) {
   for (let k = 0; k < 7; k++) { const a = k / 7 * TAU; add(Bx(0.45, 0.05, 2.0), leaf, ['t', 0, 0, 1.0], ['rx', 0.45], ['ry', a], ['t', px, py, pz]); }
   for (let k = 0; k < 3; k++) add(Sp(0.13, 6, 5), coco, ['t', px + Math.cos(k * 2.1) * 0.2, py - 0.15, pz + Math.sin(k * 2.1) * 0.2]);
 }
-function lounger(add, x, z, rot) {
-  const wht = lamb(0xffffff), towel = lamb([0x5ab4ff, 0xff6b6b, 0xffd23f, 0x7bd389][(Math.abs(x * 7 + z * 3) | 0) % 4]);
-  add(Bx(0.7, 0.1, 1.5), wht, ['t', 0, 0.35, 0], ['ry', rot], ['t', x, 0, z]);
-  add(Bx(0.7, 0.1, 0.7), wht, ['t', 0, 0.3, 0], ['rx', -0.8], ['t', 0, 0.35, -0.95], ['ry', rot], ['t', x, 0, z]);
-  add(Bx(0.6, 0.02, 1.3), towel, ['t', 0, 0.41, 0.05], ['ry', rot], ['t', x, 0, z]);
-  for (const [lx, lz] of [[0.3, 0.65], [-0.3, 0.65], [0.3, -0.65], [-0.3, -0.65]]) add(Bx(0.05, 0.32, 0.05), wht, ['t', lx, 0.16, lz], ['ry', rot], ['t', x, 0, z]);
+// Liege: Kopfende bei -z (Rückenlehne), Fußende bei +z
+function makeLounger(parent, x, z, rot, towelC) {
+  const lg = new THREE.Group(); lg.position.set(x, 0.06, z); lg.rotation.y = rot; parent.add(lg); const add = adder(lg);
+  const frame = lamb(0xf7f7f7), cushion = lamb(0xfafafa), towel = lamb(towelC), leg = lamb(0xb8bec6);
+  for (const sx of [-0.32, 0.32]) { add(Bx(0.05, 0.05, 1.32), frame, ['t', sx, 0.31, 0.32]); add(Bx(0.05, 0.31, 0.05), leg, ['t', sx, 0.155, 0.92]); add(Bx(0.05, 0.31, 0.05), leg, ['t', sx, 0.155, -0.28]); }
+  add(Bx(0.62, 0.08, 1.26), cushion, ['t', 0, 0.37, 0.32]); add(Bx(0.54, 0.014, 1.16), towel, ['t', 0, 0.418, 0.34]);
+  const back = new THREE.Group(); back.position.set(0, 0.37, -0.3); back.rotation.x = 0.61; lg.add(back); const addB = adder(back);
+  addB(Bx(0.62, 0.08, 0.76), cushion, ['t', 0, 0, -0.38]); addB(Bx(0.54, 0.014, 0.66), towel, ['t', 0, 0.047, -0.36]);
+  addB(Sp(0.13, 10, 8), lamb(0xffffff), ['s', 1.6, 0.45, 0.8], ['t', 0, 0.08, -0.62]);
+  for (const sx of [-0.3, 0.3]) add(Bx(0.04, 0.4, 0.04), leg, ['rx', -0.5], ['t', sx, 0.24, -0.62]);
+  return lg;
 }
-
 // ---------- Resort ----------
 function buildResort(st) {
   const g = new THREE.Group(); g.matrixAutoUpdate = false; const add = adder(g);
@@ -3749,8 +3762,10 @@ function buildResort(st) {
   const water = add(Bx(9.2, 0.05, 4.6), flatPatch(new THREE.MeshLambertMaterial({ color: 0x35c3e8, emissive: 0x0b4a63, transparent: true, opacity: 0.85 })), ['t', -4, 0.62, 3.6]);
   add(Bx(0.08, 1.0, 0.08), white, ['t', 0.6, 0.6, 1.4]); add(Bx(0.08, 1.0, 0.08), white, ['t', 0.6, 0.6, 1.9]);
   // Liegen, Schirme, Palmen
-  for (let k = 0; k < 4; k++) lounger(add, 2.6 + k * 1.3, 4.6, Math.PI);
-  for (let k = 0; k < 3; k++) lounger(add, -8.6 + k * 2.4, 7.2, 0);
+  const TOW = [0x5ab4ff, 0xff6b6b, 0xffd23f, 0x7bd389, 0xc77dff, 0xff9f1c, 0x2ec4b6];
+  const loungers = [];
+  for (let k = 0; k < 4; k++) loungers.push(makeLounger(g, 2.6 + k * 1.3, 4.5, Math.PI, TOW[k]));
+  for (let k = 0; k < 3; k++) loungers.push(makeLounger(g, -8.6 + k * 2.4, 7.25, Math.PI, TOW[k + 4]));
   const umbrellas = [];
   for (const [x, z, col] of [[3.2, 6.6, 0xff6b6b], [5.8, 6.6, 0x5ab4ff], [-6, 0.4, 0xffd23f]]) {
     add(Cy(0.04, 0.04, 2.4, 6), white, ['t', x, 1.2, z]);
@@ -3770,7 +3785,17 @@ function buildResort(st) {
   const lit = flatPatch(new THREE.MeshBasicMaterial({ color: 0xffe08a }));
   const o = sObj(st); setObjMatrix(g, o.p, o.n, o.f, 1); scene.add(g);
   const label = makeLabel('RESORT', '#ff9a8b', 3);
-  return { st, o, group: g, windows, glass, lit, water, poolFloor, umbrellas, flag, boardT, label, pct: -1 };
+  // Gäste: liegen, schwimmen, spazieren
+  const guests = [], gs = (W.seed >>> 0) % 100000;
+  const order = ['walk', 'lie', 'walk', 'lie', 'swim', 'lie', 'swim', 'walk', 'lie', 'swim', 'lie', 'walk', 'lie', 'swim', 'lie'];
+  let li = 0, si = 0, wi = 0;
+  order.forEach((kind, i) => {
+    const c = makeChar(guestSpec(gs + i, kind)); c.g.visible = false;
+    if (kind === 'lie') { const lg = loungers[li++]; lg.add(c.g); const phi = -0.96; c.g.rotation.x = phi; c.g.position.set(0, 0.5 - 0.88 * Math.cos(phi), -0.2 - 0.88 * Math.sin(phi)); }
+    else g.add(c.g);
+    guests.push({ c, kind, idx: kind === 'swim' ? si++ : kind === 'walk' ? wi++ : li - 1, ph: i * 1.7 });
+  });
+  return { st, o, group: g, windows, glass, lit, water, poolFloor, umbrellas, flag, boardT, label, pct: -1, guests };
 }
 function drawResortBoard(t, pct) {
   redrawSign(t, (c, w, h) => {
@@ -3787,7 +3812,7 @@ function drawResortBoard(t, pct) {
     c.fillText('Eröffnung, sobald der Planet sauber ist', w / 2, 350);
   });
 }
-const resortGuests = (pct) => Math.min(14, Math.floor(pct / 7));
+const resortGuests = (pct) => Math.min(15, Math.floor(pct / 6.6));
 function updateResort(dt) {
   const R0 = STR.resort; if (!R0) return;
   const pct = G.shredded / TOTAL * 100, ip = Math.floor(pct);
@@ -3801,23 +3826,27 @@ function updateResort(dt) {
   }
   if (R0.flag.visible) R0.flag.rotation.y = Math.sin(performance.now() / 400) * 0.25;
   const lp = localToWorld(R0.o, -2, 12.6, -3, _v1); R0.label.position.copy(flatCPU(lp.x, lp.y, lp.z, PL.up));
-  const d = R0.o.p.distanceTo(PL.pos); R0.label.visible = VIEW.mode === 'play' && d > 22 && d < 95;
-  // Urlauber
-  const n = resortGuests(pct), T = STR.tourists; T.begin();
-  const spots = [[-6, 3.4, 1], [-3, 3.8, 1], [-1.5, 3, 1], [2.6, 4.6, 2], [3.9, 4.6, 2], [5.2, 4.6, 2], [6.5, 4.6, 2], [-8.6, 7.2, 3], [-6.2, 7.2, 3], [-3.8, 7.2, 3], [0, 0.6, 0], [1.5, 1.6, 0], [-9, 1.2, 0], [8, 2, 0]];
-  const t = performance.now() / 1000;
-  for (let i = 0; i < n; i++) {
-    const [x, z, kind] = spots[i]; if (kind === 1 && pct < 40) continue;
-    const p = localToWorld(R0.o, x + (kind === 0 ? Math.sin(t * 0.4 + i) * 0.8 : 0), kind === 1 ? -0.35 + Math.sin(t * 2 + i) * 0.05 : kind >= 2 ? 0.45 : 0.06, z, _v2);
-    let fwd = _v3.copy(R0.o.f); if (kind === 0) fwd.applyAxisAngle(R0.o.n, Math.sin(t * 0.5 + i * 3) * 1.5); if (kind === 3) fwd.multiplyScalar(-1);
-    if (kind >= 2) { // liegend auf der Liege
-      const up = _fa.copy(fwd).multiplyScalar(kind === 2 ? -1 : 1), f2 = _fb.copy(R0.o.n), X = _fc.crossVectors(up, f2).normalize();
-      if (T.n < T.cap) { const k = T.n++; writeBasis(T.im.array, k * 16, p.addScaledVector(up, -0.6), X, up, f2, 1); const c = TOURIST_COLS[i % TOURIST_COLS.length]; T.ic.array[k * 3] = c.r; T.ic.array[k * 3 + 1] = c.g; T.ic.array[k * 3 + 2] = c.b; }
-    } else T.addNF(p, R0.o.n, fwd, 1, TOURIST_COLS[i % TOURIST_COLS.length]);
+  const d = R0.o.p.distanceTo(PL.pos); R0.label.visible = VIEW.mode === 'play' && d > 22 && d < 92;
+  R0.group.visible = VIEW.mode !== 'play' || d < 104; // in der Ferne ausblenden statt im Nebel zu schweben
+  // Gäste
+  const nG = resortGuests(pct), tt = performance.now() / 1000;
+  const near = d < 75; let shown = 0;
+  for (const q of R0.guests) {
+    const want = shown < nG && (q.kind !== 'swim' || pct >= 40); if (want) shown++;
+    q.c.g.visible = want && near; if (!q.c.g.visible) continue;
+    if (q.kind === 'lie') animChar(q.c, 'lie', tt);
+    else if (q.kind === 'swim') {
+      const a = tt * 0.25 + q.idx * 1.6, cx = -4 + Math.cos(q.idx * 2.3) * 2.2, cz = 3.6 + Math.sin(q.idx * 1.7) * 0.6;
+      q.c.g.position.set(cx + Math.cos(a) * 1.6, -0.6, cz + Math.sin(a) * 1.0); q.c.g.rotation.set(0, -a, 0); animChar(q.c, 'swim', tt);
+    } else {
+      const P = WALK_PATH, L = WALK_LEN, s0 = ((tt * 1.05 + q.idx * L / 4) % L + L) % L; let acc = 0;
+      for (let k = 0; k < P.length; k++) { const A = P[k], B = P[(k + 1) % P.length], seg = Math.hypot(B[0] - A[0], B[1] - A[1]); if (acc + seg >= s0) { const u = (s0 - acc) / seg; q.c.g.position.set(A[0] + (B[0] - A[0]) * u, 0.06, A[1] + (B[1] - A[1]) * u); q.c.g.rotation.set(0, Math.atan2(B[0] - A[0], B[1] - A[1]), 0); break; } acc += seg; }
+      animChar(q.c, 'walk', tt, 0.75);
+    }
   }
-  T.end();
 }
-const TOURIST_COLS = [0xff6b6b, 0x5ab4ff, 0xffd23f, 0xc77dff, 0x7bd389, 0xff9f1c, 0x2ec4b6, 0xf15bb5].map((c) => new THREE.Color(c));
+const WALK_PATH = [[-10.2, 0.2], [9.8, 0.2], [9.8, 7.7], [1.7, 7.7], [1.7, 0.9]];
+const WALK_LEN = WALK_PATH.reduce((a, A, k) => { const B = WALK_PATH[(k + 1) % WALK_PATH.length]; return a + Math.hypot(B[0] - A[0], B[1] - A[1]); }, 0);
 
 // ---------- Putz-Markt ----------
 function buildShop(st) {
@@ -3869,6 +3898,7 @@ function updateShopModel(dt) {
   S.ant.material.color.setHex((t * 2 | 0) % 2 ? 0xff3b30 : 0xffd23f);
   const lp = localToWorld(S.o, 0, 5.2, 0, _v2); S.label.position.copy(flatCPU(lp.x, lp.y, lp.z, PL.up));
   const d = S.o.p.distanceTo(PL.pos); S.label.visible = VIEW.mode === 'play' && d > 9 && d < 70;
+  S.group.visible = VIEW.mode !== 'play' || d < 100;
 }
 // ---------- Einkaufen nur im Laden ----------
 function shopSpots() { const l = []; if (STR.shop) l.push([STR.shop.zone, 4.2]); for (const s of SH) if (s.vend) l.push([s.vend, 3.2]); return l; }
@@ -3897,11 +3927,186 @@ function updateShopZone(dt) {
 const SHOP_HELLO = ['🤖 Krämer-Bot: Willkommen im Putz-Markt! Heute im Angebot: alles.', '🤖 Krämer-Bot: Schön, dich zu sehen! Deine Münzen auch.', '🤖 Krämer-Bot: Frisch eingetroffen: Besen. Wie immer.', '🤖 Krämer-Bot: Kein Umtausch bei Schwarzen Löchern.'];
 function syncStructs() {
   if (STR.seed === W.seed) return; STR.seed = W.seed;
-  for (const k of ['resort', 'shop']) if (STR[k]) { scene.remove(STR[k].group); scene.remove(STR[k].label); STR[k] = null; }
-  if (!STR.tourists) STR.tourists = new IG([{ geo: M([P(new THREE.CapsuleGeometry(0.24, 0.6, 3, 8), WHITE_C, ['t', 0, 0.55, 0]), P(Sp(0.2, 8, 6), 0xffd7b5, ['t', 0, 1.25, 0]), P(Cy(0.26, 0.26, 0.05, 10), 0xfff1a8, ['t', 0, 1.42, 0]), P(Cy(0.15, 0.17, 0.12, 10), 0xfff1a8, ['t', 0, 1.5, 0])]), mat: trashMat }], 16, true);
+  for (const k of ['resort', 'shop']) if (STR[k]) { scene.remove(STR[k].group); scene.remove(STR[k].label); if (STR[k].guests) STR[k].guests.forEach((q) => q.c.dispose()); STR[k] = null; }
   for (const st of W.structs) { if (st.kind === 'resort') STR.resort = buildResort(st); else if (st.kind === 'shop') STR.shop = buildShop(st); }
 }
 function updateStructs(dt) { syncStructs(); updateResort(dt); updateShopModel(dt); if (G.running) updateShopZone(dt); }
+
+
+// =====================================================================
+//  PUTZPLANET – Teil 9: Figuren im Clay-Look (Gäste & Spieler)
+// =====================================================================
+const CHAR_MAT = flatPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0 }));
+// weiche, indizierte Teile (glatte Normalen statt Flat-Shading)
+function S(geo, color, ...list) { ops(geo, list); geo.deleteAttribute('uv'); return setColor(geo, color); }
+const SKINS = [0xf6d3bd, 0xeec09d, 0xd99e76, 0xb87b55, 0x8a5636, 0x5e3a24];
+const HAIRC = [0x2a1c14, 0x5b3a26, 0x9c6435, 0xe6c46e, 0xa8a8a8, 0x1b1b1b, 0xe07ab0, 0xc0502a];
+function bandColor(g, c1, c2, y0, step) { const p = g.attributes.position, c = g.attributes.color, a = new THREE.Color(c1), b = new THREE.Color(c2); for (let i = 0; i < p.count; i++) { const k = Math.floor((p.getY(i) - y0) / step) & 1; const col = k ? b : a; c.setXYZ(i, col.r, col.g, col.b); } return g; }
+function charGeos(sp) {
+  const skin = sp.skin, hc = sp.hairC, dark = 0x1c1c1c, B = [], A = [], L = [];
+  const shade = (c, k) => { const x = new THREE.Color(c); x.multiplyScalar(k); return x; };
+  const H = [];
+  // ---- Kopf
+  H.push(S(Sp(0.125, 20, 16), skin, ['s', 0.95, 1.1, 1], ['t', 0, 1.6, 0]));
+  H.push(S(Sp(0.026, 10, 8), shade(skin, 0.9), ['s', 1, 1.1, 1.1], ['t', 0, 1.585, 0.122]));
+  for (const sx of [-1, 1]) {
+    H.push(S(Sp(0.015, 8, 6), dark, ['s', 1, 1.25, 0.6], ['t', sx * 0.045, 1.625, 0.112]));
+    H.push(S(Sp(0.029, 10, 8), skin, ['s', 0.6, 1, 1], ['t', sx * 0.118, 1.6, -0.005]));
+    H.push(S(Bx(0.045, 0.01, 0.012), hc === 0xa8a8a8 ? 0x8a8a8a : shade(hc, 0.8), ['rz', sx * -0.12], ['t', sx * 0.046, 1.66, 0.108]));
+  }
+  H.push(S(new THREE.TorusGeometry(0.03, 0.007, 6, 12, Math.PI), 0x8a3b3b, ['rz', Math.PI], ['s', 1, 0.6, 1], ['t', 0, 1.553, 0.113]));
+  if (sp.glasses) { for (const sx of [-1, 1]) H.push(S(Cy(0.03, 0.03, 0.012, 14), 0x15171c, ['rx', Math.PI / 2], ['s', 1.25, 1, 1], ['t', sx * 0.047, 1.627, 0.123])); H.push(S(Bx(0.03, 0.008, 0.008), 0x15171c, ['t', 0, 1.632, 0.125])); }
+  // ---- Haare / Kopfbedeckung
+  const cap = (r, c, tilt = -0.32, theta = 1.35) => S(new THREE.SphereGeometry(r, 20, 12, 0, TAU, 0, theta), c, ['rx', tilt], ['s', 0.97, 1.08, 1.02], ['t', 0, 1.605, -0.008]);
+  const h = sp.hair;
+  if (h === 'short' || h === 'bob' || h === 'long' || h === 'bun' || h === 'curly') H.push(cap(0.134, hc));
+  if (h === 'bob') H.push(S(new THREE.CapsuleGeometry(0.11, 0.1, 6, 14), hc, ['s', 1.12, 1, 0.75], ['t', 0, 1.54, -0.045]));
+  if (h === 'long') H.push(S(new THREE.CapsuleGeometry(0.11, 0.22, 6, 14), hc, ['s', 1.12, 1, 0.65], ['t', 0, 1.47, -0.06]));
+  if (h === 'bun') H.push(S(Sp(0.058, 12, 10), hc, ['t', 0, 1.745, -0.07]));
+  if (h === 'curly') { const r = mulberry32(5); for (let k = 0; k < 18; k++) { const a = r() * TAU, e = 0.15 + r() * 1.05; const x = Math.cos(a) * Math.sin(e), y = Math.cos(e), z = Math.sin(a) * Math.sin(e); if (z > 0.55 && y < 0.75) continue; H.push(S(Sp(0.042, 8, 6), hc, ['t', x * 0.135, 1.62 + y * 0.135, z * 0.13 - 0.01])); } }
+  if (h === 'beanie') { H.push(cap(0.138, sp.hatC || 0xf2b632, -0.15, 1.45)); H.push(S(new THREE.TorusGeometry(0.128, 0.022, 8, 20), shade(sp.hatC || 0xf2b632, 0.85), ['rx', Math.PI / 2 - 0.15], ['t', 0, 1.655, 0.005])); H.push(S(Sp(0.075, 10, 8), hc, ['s', 1.3, 0.5, 0.6], ['t', 0, 1.6, -0.1])); }
+  if (h === 'sunhat') { H.push(S(Cy(0.27, 0.27, 0.012, 24), sp.hatC || 0xf2d06b, ['rx', -0.08], ['t', 0, 1.705, 0])); H.push(S(new THREE.SphereGeometry(0.13, 18, 10, 0, TAU, 0, 1.4), sp.hatC || 0xf2d06b, ['t', 0, 1.66, -0.005])); H.push(S(Cy(0.132, 0.132, 0.03, 18), 0xd94f4f, ['t', 0, 1.72, 0])); }
+  if (h === 'bald') { H.push(S(new THREE.SphereGeometry(0.131, 16, 8, Math.PI * 0.62, Math.PI * 0.76, 1.05, 0.65), hc, ['t', 0, 1.6, 0])); }
+  if (sp.beard) { H.push(S(Sp(0.1, 14, 10), hc, ['s', 1.05, 0.78, 0.9], ['t', 0, 1.535, 0.03])); H.push(S(new THREE.CapsuleGeometry(0.014, 0.06, 4, 8), hc, ['rz', Math.PI / 2], ['t', 0, 1.567, 0.121])); }
+  for (const hg of H) { hg.translate(0, -1.6, 0); hg.scale(1.17, 1.17, 1.17); hg.translate(0, 1.645, 0); B.push(hg); }
+  // ---- Hals & Oberkörper
+  B.push(S(Cy(0.052, 0.058, 0.13, 12), skin, ['t', 0, 1.475, -0.005]));
+  const torsoPts = [[0.01, 0.9], [0.155, 0.92], [0.168, 1.0], [0.16, 1.12], [0.17, 1.24], [0.19, 1.33], [0.18, 1.38], [0.13, 1.43], [0.055, 1.46], [0.01, 1.465]].map(([r, y]) => new THREE.Vector2(r, y));
+  const torso = (sc, c) => S(new THREE.LatheGeometry(torsoPts, 22), c, ['s', sc * 1.17, 1, sc * 0.74]);
+  const top = sp.top;
+  if (top === 'none') B.push(torso(1, skin));
+  else if (top === 'stripes') B.push(bandColor(torso(1, sp.topC), sp.topC, sp.top2C, 0.94, 0.075));
+  else if (top === 'jacket' || top === 'vest') {
+    B.push(torso(1, sp.top2C));
+    const j = torso(1.06, sp.topC); B.push(j);
+    B.push(S(Bx(0.12, 0.44, 0.03), sp.top2C, ['t', 0, 1.15, 0.128]));
+    for (const sx of [-1, 1]) B.push(S(Bx(0.06, 0.12, 0.025), shade(sp.topC, 0.88), ['rz', sx * 0.5], ['t', sx * 0.07, 1.36, 0.12]));
+  } else B.push(torso(1, sp.topC));
+  if (top === 'hoodie') { B.push(S(new THREE.TorusGeometry(0.115, 0.052, 8, 16, Math.PI), sp.topC, ['rx', -Math.PI / 2], ['t', 0, 1.44, -0.025])); B.push(S(Bx(0.2, 0.11, 0.03), shade(sp.topC, 0.9), ['t', 0, 1.02, 0.12])); }
+  if (top === 'tank') for (const sx of [-1, 1]) B.push(S(Sp(0.072, 10, 8), skin, ['s', 1, 0.8, 1], ['t', sx * 0.19, 1.37, 0]));
+  // ---- Hüfte / Rock
+  const bc = sp.botC;
+  if (sp.bottom === 'skirt') B.push(S(Cy(0.2, 0.28, 0.32, 18), bc, ['s', 1, 1, 0.76], ['t', 0, 0.78, 0]));
+  else B.push(S(Sp(0.17, 16, 10), bc, ['s', 1.22, 0.64, 0.8], ['t', 0, 0.92, 0]));
+  if (sp.belt) B.push(S(Cy(0.2, 0.2, 0.035, 18), 0x5b4a3a, ['s', 1, 1, 0.72], ['t', 0, 0.96, 0]));
+  if (sp.ring) B.push(S(new THREE.TorusGeometry(0.25, 0.08, 10, 22), 0xffd23f, ['rx', Math.PI / 2], ['s', 1, 1, 0.85], ['t', 0, 0.9, 0]));
+  // ---- Arm (Drehpunkt Schulter)
+  const slv = top === 'none' || top === 'tank' ? 'none' : top === 'vest' ? (sp.sleeves === 'none' ? 'none' : sp.sleeves) : sp.sleeves;
+  const slvC = top === 'jacket' ? sp.topC : top === 'vest' ? sp.top2C : sp.topC;
+  if (slv === 'long') { A.push(S(new THREE.CapsuleGeometry(0.068, 0.2, 6, 12), slvC, ['t', 0, -0.15, 0])); A.push(S(new THREE.CapsuleGeometry(0.06, 0.2, 6, 12), slvC, ['t', 0, -0.39, 0])); }
+  else {
+    A.push(S(new THREE.CapsuleGeometry(0.06, 0.2, 6, 12), skin, ['t', 0, -0.15, 0]));
+    A.push(S(new THREE.CapsuleGeometry(0.053, 0.2, 6, 12), skin, ['t', 0, -0.39, 0]));
+    if (slv === 'short') A.push(S(Cy(0.076, 0.082, 0.16, 12), slvC, ['t', 0, -0.06, 0]));
+  }
+  A.push(S(Sp(0.062, 12, 10), skin, ['s', 0.75, 1.1, 0.65], ['t', 0, -0.57, 0.01]));
+  A.push(S(Sp(0.024, 6, 5), skin, ['t', 0.035, -0.545, 0.04]));
+  // ---- Bein (Drehpunkt Hüfte)
+  const b = sp.bottom;
+  if (b === 'jeans') { L.push(S(new THREE.CapsuleGeometry(0.09, 0.62, 6, 12), bc, ['t', 0, -0.4, 0])); L.push(S(Cy(0.088, 0.088, 0.06, 12), shade(bc, 1.25), ['t', 0, -0.73, 0])); }
+  else {
+    L.push(S(new THREE.CapsuleGeometry(0.07, 0.64, 6, 12), skin, ['t', 0, -0.41, 0]));
+    if (b === 'shorts') L.push(S(Cy(0.098, 0.1, 0.36, 12), bc, ['t', 0, -0.18, 0]));
+    if (b === 'trunks') L.push(S(Cy(0.098, 0.1, 0.2, 12), bc, ['t', 0, -0.1, 0]));
+  }
+  const shoe = sp.shoes, sc = sp.shoeC;
+  if (shoe === 'none') L.push(S(Sp(0.062, 10, 8), skin, ['s', 0.9, 0.6, 1.7], ['t', 0, -0.835, 0.04]));
+  else {
+    if (sp.socks) L.push(S(Cy(0.07, 0.07, 0.09, 10), 0xf4f4f4, ['t', 0, -0.76, 0]));
+    if (shoe === 'boot') L.push(S(Cy(0.084, 0.084, 0.13, 12), sc, ['t', 0, -0.77, 0]));
+    L.push(S(new THREE.CapsuleGeometry(0.072, 0.15, 6, 12), sc, ['rx', Math.PI / 2], ['s', 1.12, 0.85, 1], ['t', 0, -0.81, 0.05]));
+    L.push(S(Bx(0.17, 0.035, 0.32), shoe === 'boot' ? 0x3a2a1a : 0xf2f2f2, ['t', 0, -0.863, 0.05]));
+    if (shoe === 'sneaker') L.push(S(Sp(0.046, 8, 6), 0xf2f2f2, ['s', 1.4, 0.8, 1], ['t', 0, -0.83, 0.17]));
+  }
+  return { body: mergeGeometries(B), arm: mergeGeometries(A), leg: mergeGeometries(L) };
+}
+function makeChar(sp) {
+  const geo = charGeos(sp), g = new THREE.Group();
+  const mk = (gg, parent) => { const m = new THREE.Mesh(gg, CHAR_MAT); m.frustumCulled = false; parent.add(m); return m; };
+  const body = new THREE.Group(); g.add(body); mk(geo.body, body);
+  const piv = (x, y, gg) => { const p = new THREE.Group(); p.position.set(x, y, 0); body.add(p); mk(gg, p); return p; };
+  const armL = piv(0.245, 1.37, geo.arm), armR = piv(-0.245, 1.37, geo.arm), legL = piv(0.108, 0.88, geo.leg), legR = piv(-0.108, 0.88, geo.leg);
+  armL.rotation.z = 0.09; armR.rotation.z = -0.09;
+  return { g, body, armL, armR, legL, legR, sp, ph: Math.random() * TAU, dispose() { for (const k in geo) geo[k].dispose(); } };
+}
+function animChar(c, mode, t, spd = 1) {
+  const b = c.body, ph = c.ph + t;
+  if (mode === 'walk') {
+    const w = ph * 7 * spd, s = Math.sin(w);
+    c.legL.rotation.x = s * 0.55; c.legR.rotation.x = -s * 0.55;
+    c.armL.rotation.x = -s * 0.5; c.armR.rotation.x = s * 0.5; c.armL.rotation.z = 0.09; c.armR.rotation.z = -0.09;
+    b.position.y = Math.abs(Math.cos(w)) * 0.035; b.rotation.set(0.04, s * 0.06, 0);
+  } else if (mode === 'swim') {
+    const w = ph * 2.2;
+    c.legL.rotation.x = Math.sin(w * 2) * 0.35; c.legR.rotation.x = -Math.sin(w * 2) * 0.35;
+    c.armL.rotation.set(0, 0, 1.15 + Math.sin(w) * 0.35); c.armR.rotation.set(0, 0, -1.15 - Math.sin(w) * 0.35);
+    b.position.y = Math.sin(w * 1.3) * 0.03; b.rotation.set(0, 0, 0);
+  } else if (mode === 'lie') {
+    c.legL.rotation.x = c.legR.rotation.x = -0.61; c.legL.rotation.z = 0.04; c.legR.rotation.z = -0.04;
+    c.armL.rotation.set(0.15, 0, 0.18); c.armR.rotation.set(0.15, 0, -0.18);
+    if (c.sp.handsBehind) { c.armL.rotation.set(-2.7, 0, -0.5); c.armR.rotation.set(-2.7, 0, 0.5); }
+    b.position.y = 0; b.rotation.set(Math.sin(ph * 0.6) * 0.008, 0, 0);
+  } else if (mode === 'wave') {
+    c.legL.rotation.x = c.legR.rotation.x = 0; c.armR.rotation.set(0, 0, -0.09);
+    c.armL.rotation.set(0, 0, 2.6 + Math.sin(ph * 8) * 0.3); b.position.y = 0; b.rotation.set(0, 0, 0);
+  } else { // idle
+    c.legL.rotation.x = c.legR.rotation.x = 0; c.legL.rotation.z = c.legR.rotation.z = 0;
+    c.armL.rotation.set(Math.sin(ph * 1.1) * 0.05, 0, 0.09); c.armR.rotation.set(-Math.sin(ph * 1.1) * 0.05, 0, -0.09);
+    b.position.y = Math.sin(ph * 1.8) * 0.006; b.rotation.set(0, Math.sin(ph * 0.4) * 0.15, 0);
+  }
+}
+// ---------- Spielerfiguren ----------
+const CHAR_PRESETS = [
+  { name: 'Kim', skin: SKINS[0], hair: 'bob', hairC: HAIRC[3], top: 'vest', topC: 0xd7303a, top2C: 0xf2f2f2, sleeves: 'long', bottom: 'jeans', botC: 0x7d838c, shoes: 'sneaker', shoeC: 0x222222 },
+  { name: 'Ben', skin: SKINS[4], hair: 'short', hairC: HAIRC[5], top: 'stripes', topC: 0x2a62c9, top2C: 0x1d2f5e, sleeves: 'long', bottom: 'shorts', botC: 0xe058b0, shoes: 'sneaker', shoeC: 0xe8e8e8, socks: true },
+  { name: 'Juno', skin: SKINS[1], hair: 'short', hairC: HAIRC[1], top: 'hoodie', topC: 0x2e3136, sleeves: 'long', bottom: 'jeans', botC: 0x3a3d42, shoes: 'sneaker', shoeC: 0x1d1d1d },
+  { name: 'Theo', skin: SKINS[0], hair: 'short', hairC: HAIRC[2], top: 'tee', topC: 0xf2b632, sleeves: 'long', bottom: 'jeans', botC: 0x86b8ea, shoes: 'sneaker', shoeC: 0x1d1d1d },
+  { name: 'Rosa', skin: SKINS[0], hair: 'curly', hairC: HAIRC[3], top: 'jacket', topC: 0xe0457f, top2C: 0xb9bcc2, sleeves: 'long', bottom: 'jeans', botC: 0x2a5bd6, shoes: 'sneaker', shoeC: 0xf2f2f2 },
+  { name: 'Willi', skin: SKINS[1], hair: 'bald', hairC: HAIRC[4], beard: true, top: 'jacket', topC: 0xe8c48a, top2C: 0xf4f4f4, sleeves: 'long', bottom: 'jeans', botC: 0x2f3034, shoes: 'boot', shoeC: 0x6b4423 },
+  { name: 'Mila', skin: SKINS[4], hair: 'curly', hairC: HAIRC[5], top: 'vest', topC: 0x2a62c9, top2C: 0xf4f4f4, sleeves: 'short', bottom: 'jeans', botC: 0x9cc6ee, shoes: 'sneaker', shoeC: 0xe8e8e8 },
+  { name: 'Finn', skin: SKINS[2], hair: 'beanie', hairC: HAIRC[1], hatC: 0xf2b632, top: 'jacket', topC: 0x8f949b, top2C: 0xf4f4f4, sleeves: 'long', bottom: 'jeans', botC: 0x2b2d31, shoes: 'sneaker', shoeC: 0x1d1d1d },
+  { name: 'Lu', skin: SKINS[3], hair: 'bun', hairC: HAIRC[6], glasses: true, top: 'tee', topC: 0x7a7d84, sleeves: 'short', bottom: 'jeans', botC: 0x8fb9e6, shoes: 'boot', shoeC: 0xe0a43a, belt: true },
+  { name: 'Sunny', skin: SKINS[1], hair: 'sunhat', hairC: HAIRC[2], hatC: 0xf2c94c, glasses: true, top: 'none', sleeves: 'none', bottom: 'trunks', botC: 0x3fa7e0, shoes: 'none', ring: true },
+];
+const myChar = () => clamp(+(localStorage.getItem('pp_char') || 0) | 0, 0, CHAR_PRESETS.length - 1);
+// ---------- Urlauber-Generator ----------
+function guestSpec(seed, kind) {
+  const r = mulberry32(seed * 7919 + 13), pk = (a) => a[(r() * a.length) | 0];
+  const bright = [0xff6b6b, 0x5ab4ff, 0xffd23f, 0x7bd389, 0xc77dff, 0xff9f1c, 0x2ec4b6, 0xf15bb5, 0xffffff, 0x3d5a80];
+  const sp = { skin: pk(SKINS), hair: pk(['short', 'bob', 'long', 'curly', 'bun', 'short', 'bald']), hairC: pk(HAIRC.slice(0, 6)), beard: r() < 0.18, glasses: r() < 0.45 };
+  if (r() < 0.3) { sp.hair = 'sunhat'; sp.hatC = pk([0xf2d06b, 0xf4f4f4, 0xe8c48a]); }
+  if (kind === 'swim' || (kind === 'lie' && r() < 0.5)) { sp.top = r() < 0.5 ? 'none' : 'tank'; sp.topC = pk(bright); sp.sleeves = 'none'; sp.bottom = 'trunks'; sp.botC = pk(bright); sp.shoes = 'none'; sp.glasses = kind === 'lie' ? sp.glasses : false; if (kind === 'swim' && sp.hair === 'sunhat') sp.hair = 'short'; }
+  else { sp.top = pk(['tee', 'tee', 'tank', 'stripes', 'jacket']); sp.topC = pk(bright); sp.top2C = pk([0xffffff, 0x1d2f5e, 0xf4e3c1]); sp.sleeves = 'short'; sp.bottom = pk(['shorts', 'shorts', 'skirt', 'jeans']); sp.botC = pk([0x86b8ea, 0x2c3e75, 0xe8d5b0, 0x6abf69, 0xe85fa8, 0x2b2b2b]); sp.shoes = pk(['sneaker', 'none', 'sneaker']); sp.shoeC = pk([0xffffff, 0xff6b6b, 0x3d5a80]); }
+  sp.handsBehind = kind === 'lie' && r() < 0.4;
+  return sp;
+}
+// ---------- Vorschaubilder ----------
+const CHAR_THUMBS = [];
+function makeCharThumbs() {
+  const W_ = 150, H_ = 200, rt = new THREE.WebGLRenderTarget(W_, H_, { samples: 4 }); rt.texture.colorSpace = THREE.SRGBColorSpace;
+  const sc = new THREE.Scene(); sc.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 2.2)); const dl = new THREE.DirectionalLight(0xffffff, 2.2); dl.position.set(1.2, 2, 2.5); sc.add(dl);
+  const cam = new THREE.PerspectiveCamera(24, W_ / H_, 0.1, 20); cam.position.set(0.85, 1.2, 4.2); cam.lookAt(0, 0.95, 0);
+  const prevFlat = UNI.uFlat.value; UNI.uFlat.value = 0; const prevClear = renderer.getClearColor(new THREE.Color()), prevA = renderer.getClearAlpha();
+  const buf = new Uint8Array(W_ * H_ * 4), cv = document.createElement('canvas'); cv.width = W_; cv.height = H_; const cx = cv.getContext('2d'), img = cx.createImageData(W_, H_);
+  for (const sp of CHAR_PRESETS) {
+    const c = makeChar(sp); c.ph = 0; animChar(c, 'idle', 0); c.body.rotation.y = 0.35; sc.add(c.g);
+    renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(sc, cam);
+    renderer.readRenderTargetPixels(rt, 0, 0, W_, H_, buf);
+    for (let y = 0; y < H_; y++) img.data.set(buf.subarray((H_ - 1 - y) * W_ * 4, (H_ - y) * W_ * 4), y * W_ * 4);
+    cx.putImageData(img, 0, 0); CHAR_THUMBS.push(cv.toDataURL('image/png'));
+    sc.remove(c.g); c.dispose();
+  }
+  renderer.setRenderTarget(null); renderer.setClearColor(prevClear, prevA); UNI.uFlat.value = prevFlat; rt.dispose();
+}
+function charPickerHTML(sel) { return CHAR_PRESETS.map((p, i) => `<button class="chr ${i === sel ? 'on' : ''}" data-chr="${i}"><img src="${CHAR_THUMBS[i] || ''}" alt=""><span>${p.name}</span></button>`).join(''); }
+function bindCharPicker(box, onPick) {
+  box.innerHTML = charPickerHTML(myChar());
+  box.querySelectorAll('[data-chr]').forEach((b) => (b.onclick = () => { localStorage.setItem('pp_char', b.dataset.chr); box.querySelectorAll('.chr').forEach((x) => x.classList.toggle('on', x === b)); sfx('pick'); onPick && onPick(+b.dataset.chr); }));
+}
+function openCharPanel() {
+  showPanel('char', 'Deine Figur', `<div class="small" style="margin-bottom:8px">So sehen dich deine Freunde im Multiplayer.</div><div id="charGrid" class="charPick grid"></div>`);
+  bindCharPicker($('#charGrid'), (i) => { if (NET.mode === 'guest') netSend({ t: 'char', c: i }); else if (NET.mode === 'host') netBroadcast({ t: 'pl', list: rosterList() }); toast(`Du bist jetzt ${CHAR_PRESETS[i].name}`, 'good'); });
+}
 
 boot();
 
