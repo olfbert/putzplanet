@@ -15,12 +15,13 @@ First-Person-Aufräumspiel fürs Handy. Erster Arbeitstag auf der Müllstation O
 - Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5
 - Kehrmaschine „Kehrmaxx“ zum Reinsetzen (Third-Person), mit Bordschredder und Motor-Upgrades
 - Roombas sehen je nach Upgrade anders aus (5 Modelle, wachsen mit dem Tank)
+- Aufklappbare Weltkarte (Tipp auf den Globus): Seen, Wälder, Müll, Schredder, Roombas, Mitspieler, Ziel setzen
 - Wo es sauber ist, kommen Hasen, Vögel und Schmetterlinge zurück
 - Preise so ausgelegt, dass man alles kaufen kann, wenn etwa drei Viertel geschafft sind
 - 39 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
 - Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert)
 
-**Steuerung:** Handy – links ziehen laufen, rechts wischen umsehen, tippen aufheben. PC – WASD, Maus, E aufheben, F fegen, Q werfen, R Roomba absetzen, V ein-/aussteigen, B Shop.
+**Steuerung:** Handy – links ziehen laufen, rechts wischen umsehen, tippen aufheben. PC – WASD, Maus, E aufheben, F fegen, Q werfen, R Roomba absetzen, V ein-/aussteigen, M Karte, B Shop.
 
 Natur-Modelle: [Quaternius – Stylized Nature MegaKit](https://quaternius.com) (CC0). Eine einzige HTML-Datei ohne Build-Schritt; three.js und PeerJS kommen vom CDN.

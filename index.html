@@ -270,6 +270,23 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 @keyframes infbar{to{background-position:200% 0}}
 #compass.radar{border-color:#ff2d55;background:linear-gradient(180deg,rgba(90,10,30,.85),rgba(50,5,20,.8))}
 #compass.radar #arrow{color:#ff6b8a}
+#mmBox{pointer-events:auto;cursor:pointer;position:relative}
+#mmBox::after{content:'🗺️';position:absolute;right:-4px;bottom:-4px;font-size:13px;background:rgba(18,28,38,.85);border-radius:8px;padding:1px 3px;border:1.5px solid rgba(255,255,255,.2)}
+#compass.wp{border-color:#c77dff;background:linear-gradient(180deg,rgba(60,20,90,.85),rgba(35,10,55,.8))}
+#compass.wp #arrow{color:#e0b3ff}
+#mapScreen{position:fixed;inset:0;z-index:55;background:radial-gradient(ellipse at center,#0f1a33,#050914);display:flex;flex-direction:column;padding:calc(var(--st) + 8px) calc(var(--sr) + 10px) calc(var(--sb) + 8px) calc(var(--sl) + 10px);gap:6px}
+.mapHead{display:flex;align-items:center;gap:10px}
+.mapTitle{font-size:22px;color:#fff}
+#mapInfo{flex:1;color:#cfe9ff}
+#mapMode{padding:6px 10px;font-size:12px}
+#mapWrap{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-height:0}
+#mapWrap canvas{position:absolute;touch-action:none}
+#mapBase{filter:drop-shadow(0 0 18px rgba(110,190,255,.35))}
+#mapBusy{position:absolute;bottom:8px;font-size:12px;opacity:.8}
+.mapLegend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:11px;justify-content:center;align-items:center}
+.mapLegend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:-1px;border:1px solid rgba(0,0,0,.5)}
+.mapLegend .tip{opacity:.7}
+@media (max-width:560px){ .mapHead{flex-wrap:wrap} #mapInfo{order:3;flex-basis:100%} }
 #btnVeh{width:62px;height:62px;right:84px;bottom:58px;border-color:#f4a300;background:rgba(80,50,0,.75)}
 #btnVeh.exit{right:0;bottom:0;width:70px;height:70px;background:rgba(214,40,40,.8);border-color:#ff9a9a}
 
@@ -367,6 +384,11 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
   </div>
 </div>
 
+<div id="mapScreen" class="hidden">
+  <div class="mapHead"><div class="mapTitle lil">🗺️ Blühonia</div><div id="mapInfo" class="small"></div><button id="mapMode" class="btn sec">🎯 Um mich</button><button id="mapClose" class="ibtn">✕</button></div>
+  <div id="mapWrap"><canvas id="mapBase"></canvas><canvas id="mapOv"></canvas><div id="mapBusy" class="hidden">Karte wird gezeichnet …</div></div>
+  <div class="mapLegend"><span><i style="background:#6fb441"></i>sauber</span><span><i style="background:#6c5640"></i>vermüllt</span><span><i style="background:#3a9ad6"></i>Wasser</span><span><i style="background:#ffd23f;border-radius:2px"></i>Schredder</span><span><i style="background:#fff"></i>Roomba</span><span><i style="background:#f4a300;border-radius:2px"></i>Kehrmaxx</span><span><i style="background:#ff3b30"></i>Du</span><span><i style="background:#c77dff"></i>Ziel</span><span class="tip">Tippe auf die Karte, um ein Ziel zu setzen</span></div>
+</div>
 <div id="modal" class="hidden"><div class="card"><p id="modalTxt"></p><div class="row" style="justify-content:center"><button id="modalNo" class="btn sec">Abbrechen</button><button id="modalYes" class="btn red">OK</button></div></div></div>
 
 <div id="winScreen" class="screen hidden">
@@ -2277,7 +2299,7 @@ const fmtTime = (s) => { const h = Math.floor(s / 3600), m = Math.floor(s / 60) 
 function confirmModal(txt, yes = 'OK') { return new Promise((res) => { $('#modalTxt').textContent = txt; $('#modalYes').textContent = yes; $('#modal').classList.remove('hidden'); const done = (v) => { $('#modal').classList.add('hidden'); $('#modalYes').onclick = $('#modalNo').onclick = null; res(v); }; $('#modalYes').onclick = () => done(true); $('#modalNo').onclick = () => done(false); }); }
 let PANEL = '';
 function showPanel(id, title, html, extra = '') { PANEL = id; $('#panelTitle').textContent = title; $('#panelExtra').textContent = extra; $('#panelBody').innerHTML = html; $('#panelWrap').classList.remove('hidden'); INPUT.mx = INPUT.my = 0; INPUT.joyId = INPUT.lookId = null; $('#joy').style.display = 'none'; if (document.pointerLockElement) document.exitPointerLock(); }
-function closePanel() { PANEL = ''; $('#panelWrap').classList.add('hidden'); }
+function closePanel() { if (PANEL === 'map') { closeMap(); return; } PANEL = ''; $('#panelWrap').classList.add('hidden'); }
 $('#panelClose').onclick = closePanel;
 $('#panelWrap').addEventListener('pointerdown', (e) => { if (e.target.id === 'panelWrap') closePanel(); });
 
@@ -2430,12 +2452,12 @@ function updateHUD(dt) {
   if (target < 0 && targetRb < 0) $('#btnPick').classList.add('dim');
   const pc = drv ? 0 : RB.carried.length; $('#btnPlace').classList.toggle('hidden', !pc); if (pc) $('#placeN').textContent = pc > 1 ? `Absetzen ×${pc}` : 'Absetzen';
   // Müll-Radar für die letzten Teile, sonst Kompass zum nächsten Schredder
-  const rt = radarTarget();
+  const rt = waypointTarget() || radarTarget();
   if (rt) {
     _v1.subVectors(rt.p, PL.pos); _v1.addScaledVector(PL.up, -_v1.dot(PL.up)); _right.crossVectors(PL.f, PL.up);
     const ang = Math.atan2(_v1.dot(_right), _v1.dot(PL.f)), dist = R * Math.acos(clamp(rt.p.clone().normalize().dot(PL.up), -1, 1));
-    $('#arrow').style.transform = `rotate(${ang}rad)`; $('#compTxt').textContent = `🔍 ${rt.label} ${fmt(dist)} m · noch ${fmt(RADAR.left)}`;
-    $('#compass').classList.add('radar');
+    $('#arrow').style.transform = `rotate(${ang}rad)`; $('#compTxt').textContent = rt.d != null ? `${rt.label} ${fmt(dist)} m` : `🔍 ${rt.label} ${fmt(dist)} m · noch ${fmt(RADAR.left)}`;
+    $('#compass').classList.add('radar'); $('#compass').classList.toggle('wp', rt.d != null);
   }
   const si = nearestShredder(PL.pos), s = rt ? null : SH[si];
   if (!rt) $('#compass').classList.remove('radar');
@@ -2553,6 +2575,7 @@ function leaveToTitle() {
   if (NET.mode === 'guest') { try { NET.peer && NET.peer.destroy(); } catch (e) { } NET.mode = 'solo'; NET.host = null; clearRemotes(); RB.list.length = 0; }
   else if (NET.mode === 'host') stopHosting();
   if (VEH.driving) { VEH.driving = false; VEH.driver = -1; }
+  if (MAP.open) closeMap(); MAP.wp = null;
   G.running = false; closePanel(); $('#hud').classList.add('hidden'); $('#title').classList.remove('hidden'); updateMpBadge(); renderTitle();
   VIEW.mode = 'title'; rebuildOrbitData(); FA.rabbits.length = FA.birds.length = FA.flies.length = 0; renderFauna(); $('#radio').classList.add('hidden'); radioQ.length = 0;
 }
@@ -2580,7 +2603,7 @@ function frame(now) {
   else if (VIEW.mode === 'intro') updateIntro(dt);
   if (G.running && play) updateTarget(); else hl.visible = false;
   updateParticles(dt); updateShredders(dt); renderRoombas(); updateVehicleVisual(dt);
-  if (G.running && play) updateFauna(dt);
+  if (G.running && play) { updateFauna(dt); updateMap(rawDt); }
   trashT -= dt; natureT -= dt;
   if (trashT <= 0 && (trashDirty || lastTrashPos.distanceToSquared(PL.pos) > 2.25)) { rebuildTrash(); trashT = 0.07; }
   if (natureT <= 0 && (natureDirty || lastNatPos.distanceToSquared(PL.pos) > 9)) { rebuildNature(); natureT = 0.2; }
@@ -2595,6 +2618,7 @@ function frame(now) {
   sky.position.copy(camera.position); skyMat.uniforms.uCam.value.copy(camera.position); skyMat.uniforms.uT.value = elapsed;
   waterMat.normalMap.offset.set(elapsed * 0.012, elapsed * 0.008);
   adaptQuality(dt);
+  if (MAP.open) { if (G.running) updateHUD(dt); return; } // Karte deckt alles ab – 3D-Bild sparen
   renderer.setViewport(0, 0, innerWidth, innerHeight); renderer.clear();
   renderer.render(scene, camera);
   if (G.running && play) { if (!VEH.driving) { updateViewmodel(dt, PL.moving); renderer.clearDepth(); renderer.render(vmScene, vmCam); } renderMinimap(dt); updateHUD(dt); }
@@ -2627,7 +2651,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -3416,6 +3440,156 @@ function renderFauna() {
   }
   for (const k in I) I[k].end();
 }
+
+
+// =====================================================================
+//  PUTZPLANET – Teil 7: Aufgeklappte Weltkarte (Mollweide-Projektion)
+// =====================================================================
+const MAP = { open: false, mode: 'world', key: '', W: 0, H: 0, base: null, lut: null, water: null, inside: null, drawing: false, ovT: 0, dirtT: 0, wp: null, frame: null };
+const SQ2 = Math.SQRT2;
+function mapFrameFor(mode) {
+  const C = mode === 'me' ? PL.up.clone() : new THREE.Vector3(0, 1, 0);
+  let N = mode === 'me' ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(0, 0, -1);
+  N.addScaledVector(C, -N.dot(C)); if (N.lengthSq() < 1e-4) { N.set(0, 0, -1); N.addScaledVector(C, -N.dot(C)); } N.normalize();
+  const E = new THREE.Vector3().crossVectors(N, C).normalize();
+  return { C, N, E };
+}
+// Mollweide: Breite/Länge -> Kartenkoordinate (x in [-2√2, 2√2], y in [-√2, √2])
+function mollFwd(phi, lam) {
+  let t = phi; const k = Math.PI * Math.sin(phi);
+  for (let i = 0; i < 8; i++) { const f = 2 * t + Math.sin(2 * t) - k, d = 2 + 2 * Math.cos(2 * t); if (Math.abs(d) < 1e-6) break; t -= f / d; }
+  return [2 * SQ2 / Math.PI * lam * Math.cos(t), SQ2 * Math.sin(t)];
+}
+function dirToMap(d, F) { const phi = Math.asin(clamp(d.x * F.N.x + d.y * F.N.y + d.z * F.N.z, -1, 1)), lam = Math.atan2(d.x * F.E.x + d.y * F.E.y + d.z * F.E.z, d.x * F.C.x + d.y * F.C.y + d.z * F.C.z); const [x, y] = mollFwd(phi, lam); return [(x / (2 * SQ2) * 0.5 + 0.5) * MAP.W, (0.5 - y / SQ2 * 0.5) * MAP.H]; }
+function mapToDir(px, py, F, out) {
+  const x = (px / MAP.W - 0.5) * 2 * 2 * SQ2, y = (0.5 - py / MAP.H) * 2 * SQ2;
+  if (x * x / 8 + y * y / 2 > 1) return null;
+  const t = Math.asin(clamp(y / SQ2, -1, 1)), phi = Math.asin(clamp((2 * t + Math.sin(2 * t)) / Math.PI, -1, 1)), ct = Math.cos(t);
+  const lam = ct < 1e-6 ? 0 : Math.PI * x / (2 * SQ2 * ct); if (Math.abs(lam) > Math.PI) return null;
+  const cp = Math.cos(phi);
+  return out.set(0, 0, 0).addScaledVector(F.C, cp * Math.cos(lam)).addScaledVector(F.E, cp * Math.sin(lam)).addScaledVector(F.N, Math.sin(phi));
+}
+function openMap() {
+  if (MAP.open) return;
+  MAP.open = true; PANEL = 'map'; INPUT.mx = INPUT.my = 0; INPUT.joyId = INPUT.lookId = null; $('#joy').style.display = 'none'; if (document.pointerLockElement) document.exitPointerLock();
+  $('#mapScreen').classList.remove('hidden'); sfx('page');
+  layoutMap(); ensureMapBase(); drawMapOverlay();
+}
+function closeMap() { MAP.open = false; if (PANEL === 'map') PANEL = ''; $('#mapScreen').classList.add('hidden'); }
+function layoutMap() {
+  const box = $('#mapWrap').getBoundingClientRect();
+  let w = box.width, h = w / 2; if (h > box.height) { h = box.height; w = h * 2; }
+  const dpr = Math.min(devicePixelRatio || 1, 1.5), W = Math.min(1100, Math.round(w * dpr)), H = Math.round(W / 2);
+  for (const id of ['#mapBase', '#mapOv']) { const c = $(id); c.style.width = w + 'px'; c.style.height = h + 'px'; if (c.width !== W) { c.width = W; c.height = H; } }
+  if (MAP.W !== W) { MAP.W = W; MAP.H = H; MAP.key = ''; }
+}
+function ensureMapBase() {
+  const F = mapFrameFor(MAP.mode); MAP.frame = F;
+  const key = `${W.seed}|${MAP.mode}|${MAP.W}|${MAP.mode === 'me' ? F.C.toArray().map((v) => v.toFixed(2)).join() : ''}`;
+  if (key === MAP.key && MAP.base) { paintMapDirt(); return; }
+  MAP.key = key; const Wd = MAP.W, Hd = MAP.H, n = Wd * Hd;
+  MAP.base = new Uint8ClampedArray(n * 4); MAP.lut = new Uint16Array(n); MAP.water = new Uint8Array(n); MAP.inside = new Uint8Array(n);
+  const ctx = $('#mapBase').getContext('2d'); ctx.clearRect(0, 0, Wd, Hd);
+  MAP.img = ctx.createImageData(Wd, Hd);
+  const d = new THREE.Vector3(), t1 = new THREE.Vector3(), t2 = new THREE.Vector3(), q = new THREE.Vector3(), col = new THREE.Color();
+  const deep = new THREE.Color(0x1f5f9e), shallow = new THREE.Color(0x4bb3e6);
+  let row = 0; MAP.drawing = true; $('#mapBusy').classList.remove('hidden');
+  const step = () => {
+    if (MAP.key !== key) return;
+    const end = Math.min(Hd, row + 28);
+    for (; row < end; row++) for (let x = 0; x < Wd; x++) {
+      const i = row * Wd + x; if (!mapToDir(x + 0.5, row + 0.5, F, d)) continue;
+      MAP.inside[i] = 1; MAP.lut[i] = dirToCell(d.x, d.y, d.z);
+      const h = groundH(d.x, d.y, d.z);
+      t1.copy(F.E).addScaledVector(d, -d.dot(F.E)); if (t1.lengthSq() < 1e-8) t1.copy(F.N); t1.normalize(); t2.crossVectors(d, t1);
+      const e = 0.006, hx = groundH(...q.copy(d).addScaledVector(t1, e).toArray()), hy = groundH(...q.copy(d).addScaledVector(t2, e).toArray());
+      const gx = (hx - h), gy = (hy - h), slope = Math.hypot(gx, gy);
+      if (h < WATER) { MAP.water[i] = 1; col.copy(shallow).lerp(deep, clamp((WATER - h) / 5, 0, 1)); }
+      else {
+        col.copy(GC.lawnA).lerp(GC.lawnB, 0.5);
+        if (h > 4) col.lerp(GC.dry, clamp((h - 4) / 6, 0, 0.7));
+        if (h < WATER + 0.8) col.lerp(GC.sand, clamp((WATER + 0.8 - h) / 0.6, 0, 1));
+        if (slope > 0.55) col.lerp(GC.rock, clamp((slope - 0.55) / 0.8, 0, 0.8));
+        const sh = clamp(1 + (gy * 0.9 - gx * 0.6) * 0.55 + (h - 2) * 0.012, 0.6, 1.35); col.multiplyScalar(sh);
+      }
+      const o = i * 4; MAP.base[o] = col.r * 255; MAP.base[o + 1] = col.g * 255; MAP.base[o + 2] = col.b * 255; MAP.base[o + 3] = 255;
+    }
+    if (row < Hd) { paintMapDirt(row); requestAnimationFrame(step); } else { MAP.drawing = false; $('#mapBusy').classList.add('hidden'); paintMapDirt(); }
+  };
+  step();
+}
+function paintMapDirt(rows) {
+  if (!MAP.base) return; const Wd = MAP.W, n = Wd * (rows || MAP.H), d = MAP.img.data, b = MAP.base;
+  const dr = 108, dg = 86, db = 64;
+  for (let i = 0; i < n; i++) {
+    const o = i * 4; if (!MAP.inside[i]) { d[o + 3] = 0; continue; }
+    let r = b[o], g = b[o + 1], bl = b[o + 2];
+    if (!MAP.water[i]) { const k = cellDirt(MAP.lut[i]) * 0.85; r += (dr - r) * k; g += (dg - g) * k; bl += (db - bl) * k; }
+    d[o] = r; d[o + 1] = g; d[o + 2] = bl; d[o + 3] = 255;
+  }
+  $('#mapBase').getContext('2d').putImageData(MAP.img, 0, 0);
+}
+function drawMapOverlay() {
+  if (!MAP.open || !MAP.frame) return;
+  const F = MAP.frame, c = $('#mapOv').getContext('2d'), Wd = MAP.W, Hd = MAP.H, u = Wd / 700;
+  c.clearRect(0, 0, Wd, Hd);
+  const P = (v) => { const l = v.length(); _mq.set(v.x / l, v.y / l, v.z / l); return dirToMap(_mq, F); };
+  // Rahmen & Gradnetz
+  c.save(); c.beginPath(); c.ellipse(Wd / 2, Hd / 2, Wd / 2 - 1, Hd / 2 - 1, 0, 0, TAU); c.strokeStyle = 'rgba(255,255,255,0.55)'; c.lineWidth = 2 * u; c.stroke(); c.clip();
+  c.strokeStyle = 'rgba(255,255,255,0.10)'; c.lineWidth = 1 * u;
+  for (let la = -60; la <= 60; la += 30) { c.beginPath(); for (let lo = -180; lo <= 180; lo += 5) { const [x, y] = mollFwd(la * Math.PI / 180, lo * Math.PI / 180); const px = (x / (2 * SQ2) * 0.5 + 0.5) * Wd, py = (0.5 - y / SQ2 * 0.5) * Hd; lo === -180 ? c.moveTo(px, py) : c.lineTo(px, py); } c.stroke(); }
+  for (let lo = -150; lo <= 150; lo += 30) { c.beginPath(); for (let la = -90; la <= 90; la += 5) { const [x, y] = mollFwd(la * Math.PI / 180, lo * Math.PI / 180); const px = (x / (2 * SQ2) * 0.5 + 0.5) * Wd, py = (0.5 - y / SQ2 * 0.5) * Hd; la === -90 ? c.moveTo(px, py) : c.lineTo(px, py); } c.stroke(); }
+  // Bäume & Felsen
+  for (const t of W.trees) { const [x, y] = P(_mv.set(t.x, t.y, t.z)); c.fillStyle = (t.land || W.cellLeft[t.cell] < 14) ? 'rgba(30,85,30,0.85)' : 'rgba(95,72,48,0.8)'; c.beginPath(); c.arc(x, y, 1.6 * u * t.s, 0, TAU); c.fill(); }
+  c.fillStyle = 'rgba(120,120,115,0.9)';
+  for (const r of W.rocks) { const [x, y] = P(_mv.set(r.x, r.y, r.z)); c.beginPath(); c.arc(x, y, Math.max(1, 0.8 * u * r.s), 0, TAU); c.fill(); }
+  // Restmüll (Radar) – nur wenn wenige Teile übrig sind
+  if (RADAR.list.length) { const pulse = 2.2 + Math.sin(performance.now() / 200) * 0.8; c.fillStyle = '#ff2d55'; for (const p of RADAR.list) { const [x, y] = P(p); c.beginPath(); c.arc(x, y, pulse * u, 0, TAU); c.fill(); } }
+  // Roombas
+  for (const r of RB.list) { const [x, y] = P(r.p); c.fillStyle = r.carry && r.carry.length ? '#ffb347' : '#ffffff'; c.strokeStyle = '#14202b'; c.lineWidth = 1 * u; c.beginPath(); c.arc(x, y, 2.6 * u, 0, TAU); c.fill(); c.stroke(); }
+  // Kehrmaschine
+  if (G.veh.owned) { const [x, y] = P(VEH.p); c.fillStyle = '#f4a300'; c.strokeStyle = '#14202b'; c.lineWidth = 1.5 * u; c.fillRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); c.strokeRect(x - 5 * u, y - 3.5 * u, 10 * u, 7 * u); }
+  // Schredder
+  c.font = `bold ${11 * u}px Nunito, sans-serif`; c.textAlign = 'center';
+  SH.forEach((s, i) => { const [x, y] = P(s.p); const r = (s.mini ? 5 : 7) * u; c.fillStyle = s.mini ? '#7ff0d0' : '#ffd23f'; c.strokeStyle = '#14202b'; c.lineWidth = 2 * u; c.beginPath(); c.roundRect ? c.roundRect(x - r, y - r, 2 * r, 2 * r, 2 * u) : c.rect(x - r, y - r, 2 * r, 2 * r); c.fill(); c.stroke(); if (!s.mini) { c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.7)'; c.lineWidth = 3 * u; c.strokeText('Schreddi', x, y - r - 4 * u); c.fillText('Schreddi', x, y - r - 4 * u); } });
+  // Mitspieler
+  for (const o of REM.values()) { if (!o.seen) continue; const [x, y] = P(o.p); c.fillStyle = '#' + new THREE.Color(o.color).getHexString(); c.strokeStyle = '#fff'; c.lineWidth = 2 * u; c.beginPath(); c.arc(x, y, 4.5 * u, 0, TAU); c.fill(); c.stroke(); c.fillStyle = '#fff'; c.strokeStyle = 'rgba(0,0,0,.7)'; c.lineWidth = 3 * u; c.strokeText(o.name, x, y - 8 * u); c.fillText(o.name, x, y - 8 * u); }
+  // Ziel
+  if (MAP.wp) { const [x, y] = P(MAP.wp); c.fillStyle = '#c77dff'; c.strokeStyle = '#14202b'; c.lineWidth = 2 * u; c.beginPath(); c.moveTo(x, y); c.bezierCurveTo(x - 7 * u, y - 9 * u, x - 7 * u, y - 18 * u, x, y - 18 * u); c.bezierCurveTo(x + 7 * u, y - 18 * u, x + 7 * u, y - 9 * u, x, y); c.fill(); c.stroke(); c.fillStyle = '#fff'; c.beginPath(); c.arc(x, y - 12.5 * u, 2.5 * u, 0, TAU); c.fill(); }
+  // Ich (Pfeil in Blickrichtung)
+  const [px, py] = P(PL.pos), [fx, fy] = P(_mv.copy(PL.pos).addScaledVector(PL.f, 4)); const ang = Math.atan2(fy - py, fx - px);
+  const pr = 5 + Math.sin(performance.now() / 300) * 1.5; c.strokeStyle = 'rgba(255,59,48,0.6)'; c.lineWidth = 2 * u; c.beginPath(); c.arc(px, py, (9 + pr) * u, 0, TAU); c.stroke();
+  c.save(); c.translate(px, py); c.rotate(ang); c.fillStyle = '#ff3b30'; c.strokeStyle = '#fff'; c.lineWidth = 2 * u; c.beginPath(); c.moveTo(9 * u, 0); c.lineTo(-6 * u, -6 * u); c.lineTo(-3 * u, 0); c.lineTo(-6 * u, 6 * u); c.closePath(); c.fill(); c.stroke(); c.restore();
+  c.restore();
+  const pct = G.shredded / TOTAL * 100;
+  $('#mapInfo').innerHTML = `${fmtD(Math.floor(pct * 10) / 10, 1)} % sauber · ${fmt(TOTAL - G.shredded)} Teile übrig${MAP.wp ? ' · Ziel gesetzt' : ''}`;
+}
+const _mq = new THREE.Vector3(), _mv = new THREE.Vector3();
+function updateMap(dt) {
+  if (!MAP.open) return;
+  MAP.ovT -= dt; if (MAP.ovT <= 0) { MAP.ovT = 0.1; drawMapOverlay(); }
+  MAP.dirtT -= dt; if (MAP.dirtT <= 0 && !MAP.drawing) { MAP.dirtT = 2; paintMapDirt(); }
+}
+function mapTap(e) {
+  const r = $('#mapOv').getBoundingClientRect(); const px = (e.clientX - r.left) / r.width * MAP.W, py = (e.clientY - r.top) / r.height * MAP.H;
+  if (MAP.wp) { const [wx, wy] = dirToMap(_mq.copy(MAP.wp).normalize(), MAP.frame); if (Math.hypot(wx - px, wy - py) < 16 * MAP.W / 700) { MAP.wp = null; toast('Ziel entfernt'); drawMapOverlay(); return; } }
+  const d = mapToDir(px, py, MAP.frame, new THREE.Vector3()); if (!d) return;
+  MAP.wp = surf(d.multiplyScalar(R)); sfx('pick');
+  const dist = R * Math.acos(clamp(d.clone().normalize().dot(PL.up), -1, 1));
+  toast(`Ziel gesetzt – ${fmt(dist)} m entfernt. Der Kompass zeigt hin.`, 'good'); drawMapOverlay();
+}
+function waypointTarget() {
+  if (!MAP.wp) return null;
+  const d = R * Math.acos(clamp(MAP.wp.clone().normalize().dot(PL.up), -1, 1));
+  if (d < 6) { MAP.wp = null; toast('Ziel erreicht 📍', 'good'); sfx('buy'); return null; }
+  return { p: MAP.wp, label: '📍 Ziel', d };
+}
+$('#mmBox').addEventListener('pointerdown', (e) => { e.preventDefault(); e.stopPropagation(); if (G.running && VIEW.mode === 'play') openMap(); });
+$('#mapClose').onclick = closeMap;
+$('#mapOv').addEventListener('pointerup', mapTap);
+$('#mapMode').onclick = () => { MAP.mode = MAP.mode === 'world' ? 'me' : 'world'; $('#mapMode').textContent = MAP.mode === 'world' ? '🎯 Um mich' : '🏭 Schreddi in der Mitte'; MAP.key = ''; ensureMapBase(); drawMapOverlay(); };
+addEventListener('resize', () => { if (MAP.open) { layoutMap(); ensureMapBase(); drawMapOverlay(); } });
+addEventListener('keydown', (e) => { if (e.code === 'KeyM' && G.running && e.target.tagName !== 'INPUT') { MAP.open ? closeMap() : openMap(); } });
 
 boot();
 
