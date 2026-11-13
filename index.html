@@ -1692,6 +1692,10 @@ function remoteAct(id, a, e = 0) {
   if (a === 'emote') { const E = EMOTES[clamp(e | 0, 0, EMOTES.length - 1)]; o.actD = E.d; o.actA = E.a; if (o.emo) scene.remove(o.emo); o.emo = makeLabel(E.i + ' ' + E.n, '#ffd23f', 2.0); }
   else { o.actD = ACT_DUR[a] || 0.5; o.actA = a; }
 }
+function renameRemote(id, name) {
+  const o = REM.get(id); if (!o || !name) return; o.name = name; scene.remove(o.label);
+  o.label = makeLabel(name, '#' + new THREE.Color(o.color).getHexString(), 2.2); o.label.visible = false;
+}
 function addRemote(id, name, color, chr = 0) {
   let o = REM.get(id);
   if (o && o.chr === chr) return o;
@@ -2463,6 +2467,7 @@ function guestOnData(m, conn, peer) {
     case 'veh': { if (m.a === 'ok') doEnter(); else { VEH.waitReply = false; toast('Da sitzt schon jemand drin'); } break; }
     case 'up': { G.kits = m.kits || 0; G.upg = { combo: 0, ...m.upg }; G.roombaCount = m.rc; G.coins = m.c; if (m.veh) { const was = G.veh.owned; G.veh = m.veh; if (!was && m.veh.owned && m.vp) { placeVehicle(new THREE.Vector3().fromArray(m.vp), new THREE.Vector3().fromArray(m.vf)); } } if (JSON.stringify(m.shr) !== JSON.stringify(G.shredders)) { G.shredders = m.shr; syncShredders(); } if (PANEL === 'shop') renderShop(); break; }
     case 'act': { if (m.id !== NET.myId) remoteAct(m.id, m.a, m.e); break; }
+    case 'nm': { if (m.id !== NET.myId && typeof m.name === 'string') renameRemote(m.id, m.name.slice(0, 14)); break; }
     case 'cgot': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; if (m.by) toast(`${m.by} hat ein Fundstück entdeckt ✨`); } break; }
     case 'pl': syncRoster(m.list); break;
     case 'msg': toast(m.txt, m.bad ? 'bad' : ''); break;
@@ -2595,10 +2600,12 @@ function openInvite() {
   const link = location.origin !== 'null' && location.protocol.startsWith('http') ? location.origin + location.pathname + '?join=' + NET.code : '';
   const players = rosterList().map(([id, n, c]) => `<span style="color:#${new THREE.Color(c).getHexString()}">●</span> ${n}${id === 0 ? ' (du)' : ''}`).join('<br>');
   showPanel('invite', 'Freunde einladen', `<div class="small" style="margin-bottom:8px">Deine Freunde öffnen das Spiel, tippen den Code bei „Beitreten“ ein – oder öffnen direkt den Link. Ihr putzt zusammen auf deinem Planeten, alles wird bei dir gespeichert.</div>
+    <div class="lbl">Dein Name</div><div class="row" style="margin-bottom:8px"><input id="iName" maxlength="14" placeholder="Dein Name" value="${(localStorage.getItem('pp_name') || '').replace(/"/g, '')}"></div>
     <div class="code">${NET.code}</div>
     <div class="row" style="margin:10px 0"><button class="btn" id="iCopy" style="flex:1">🔗 Link kopieren</button>${navigator.share ? '<button class="btn sec" id="iShare">Teilen</button>' : ''}</div>
     <div class="lbl">Auf dem Planeten</div><div style="font-size:14px;line-height:1.6">${players}</div>
     <div class="row" style="margin-top:12px"><button class="btn red" id="iStop">Einladung beenden</button></div>`);
+  $('#iName').addEventListener('change', (e) => { const v = e.target.value.trim().slice(0, 14); localStorage.setItem('pp_name', v); if ($('#nameIn')) $('#nameIn').value = v; if (NET.mode === 'host') netBroadcast({ t: 'nm', id: NET.myId, name: myName() }); toast('Name: ' + myName(), 'good'); });
   $('#iCopy').onclick = async () => { try { await navigator.clipboard.writeText(link || NET.code); toast(link ? 'Link kopiert' : 'Code kopiert', 'good'); } catch (e) { toast('Kopieren nicht möglich – Code: ' + NET.code); } };
   if ($('#iShare')) $('#iShare').onclick = () => navigator.share({ title: 'Putzplanet', text: `Hilf mir beim Aufräumen meines Planeten! Code: ${NET.code}`, url: link || undefined }).catch(() => { });
   $('#iStop').onclick = async () => { if (await confirmModal('Einladung beenden? Alle Gäste fliegen raus.', 'Beenden')) { stopHosting(); closePanel(); toast('Planet ist wieder privat'); } };
@@ -2922,7 +2929,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { REM, addRemote, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { REM, addRemote, openInvite, remoteAct, netAct, doEmote, COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, structFloorH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
