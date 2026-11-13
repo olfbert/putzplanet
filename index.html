@@ -259,6 +259,8 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 #inv.inf{border-color:#c77dff}
 #inv.inf .bar i{background:linear-gradient(90deg,#c77dff,#7bd3ff,#c77dff);background-size:200% 100%;animation:infbar 2s linear infinite}
 @keyframes infbar{to{background-position:200% 0}}
+#compass.radar{border-color:#ff2d55;background:linear-gradient(180deg,rgba(90,10,30,.85),rgba(50,5,20,.8))}
+#compass.radar #arrow{color:#ff6b8a}
 #btnVeh{width:62px;height:62px;right:84px;bottom:58px;border-color:#f4a300;background:rgba(80,50,0,.75)}
 #btnVeh.exit{right:0;bottom:0;width:70px;height:70px;background:rgba(214,40,40,.8);border-color:#ff9a9a}
 
@@ -1582,7 +1584,7 @@ function initMinimap() {
   MM.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1, 48, 24), new THREE.MeshBasicMaterial({ map: MM.tex })));
   MM.scene.add(new THREE.Mesh(new THREE.SphereGeometry(1.09, 32, 16), new THREE.MeshBasicMaterial({ color: 0x9ad8ff, transparent: true, opacity: 0.22, side: THREE.BackSide })));
   MM.me = new THREE.Mesh(new THREE.ConeGeometry(0.07, 0.2, 8), new THREE.MeshBasicMaterial({ color: 0xff3b30 })); MM.scene.add(MM.me);
-  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(128 * 3), 3)); pg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(128 * 3), 3));
+  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(new Float32Array(256 * 3), 3)); pg.setAttribute('color', new THREE.BufferAttribute(new Float32Array(256 * 3), 3));
   MM.pts = new THREE.Points(pg, new THREE.PointsMaterial({ size: 5, sizeAttenuation: false, vertexColors: true })); MM.pts.frustumCulled = false; MM.scene.add(MM.pts);
 }
 function paintMinimap() {
@@ -1603,7 +1605,8 @@ function renderMinimap(dt) {
   MM.cam.position.copy(n).multiplyScalar(3.6); MM.cam.up.copy(PL.f); MM.cam.lookAt(0, 0, 0);
   MM.me.position.copy(n).multiplyScalar(1.04); MM.me.quaternion.setFromUnitVectors(_v1.set(0, 1, 0), PL.f);
   const pa = MM.pts.geometry.attributes.position.array, ca = MM.pts.geometry.attributes.color.array; let k = 0;
-  const put = (v, hex) => { if (k >= 128) return; const l = v.length(); pa[k * 3] = v.x / l * 1.01; pa[k * 3 + 1] = v.y / l * 1.01; pa[k * 3 + 2] = v.z / l * 1.01; _mc.setHex(hex); ca[k * 3] = _mc.r; ca[k * 3 + 1] = _mc.g; ca[k * 3 + 2] = _mc.b; k++; };
+  const put = (v, hex) => { if (k >= 256) return; const l = v.length(); pa[k * 3] = v.x / l * 1.01; pa[k * 3 + 1] = v.y / l * 1.01; pa[k * 3 + 2] = v.z / l * 1.01; _mc.setHex(hex); ca[k * 3] = _mc.r; ca[k * 3 + 1] = _mc.g; ca[k * 3 + 2] = _mc.b; k++; };
+  for (const p of RADAR.list) put(p, 0xff2d55);
   for (const s of SH) put(s.p, 0xffd23f);
   for (const o of REM.values()) if (o.seen) put(o.p, o.color);
   for (let i = 0; i < RB.list.length && k < 128; i += Math.max(1, RB.list.length / 40 | 0)) put(RB.list[i].p, 0xffffff);
@@ -1975,7 +1978,7 @@ function doBuy(k, p) { // nur Solo/Host
     if (groundH(pos.x, pos.y, pos.z) < WATER) pos.copy(PL.pos);
     const n = pos.clone().normalize(); placeVehicle(pos, new THREE.Vector3().crossVectors(PL.f, n).normalize()); ensureVehicle(); radio('veh');
   }
-  else if (k === 'vauto') { G.veh.auto = true; radio('vauto'); }
+  else if (k === 'vauto') { G.veh.auto = true; radio('vauto'); if (VEH.items.length) { const ids = VEH.items.splice(0); VEH.load = 0; creditShred(ids, -1, null); toast(`${ids.length} Teile aus dem Tank direkt geschreddert`, 'good'); } }
   else if (k === 'vspd') G.veh.spd++;
   else G.upg[k]++;
   if (k === 'cap' && G.upg.cap === CAP.length - 1) radio('basket');
@@ -2021,9 +2024,9 @@ function makeSave() {
   return {
     v: 1, seed: W.seed, coins: G.coins, totalCoins: G.totalCoins, shredded: G.shredded, played: G.played, tut: G.tut, created: G.created, won: G.won,
     upg: { ...G.upg }, rc: G.roombaCount, shredders: G.shredders.map((s) => s.slice()), removed: W.removed.slice(),
-    loose: [...G.loose].map(([id, L]) => [id, ...L]), inv: G.inv.slice(),
+    loose: [...[...G.loose].map(([id, L]) => [id, ...L]), ...FLY.filter((f) => !f.arc).map((f) => [f.id, f.pos.x, f.pos.y, f.pos.z, 0])], inv: G.inv.slice(),
     player: { p: PL.pos.toArray(), f: PL.f.toArray(), pitch: PL.pitch },
-    roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1]), ...RB.carried.map(() => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z)])], ts: Date.now(),
+    roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1, r.carry.slice()]), ...RB.carried.map((r) => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z), r.carry.slice()])], ts: Date.now(),
     st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(),
     veh: { ...G.veh, p: VEH.p.toArray(), f: VEH.f.toArray(), items: VEH.items.slice() },
   };
@@ -2048,12 +2051,19 @@ function applySave(s) {
   G.st = { ...freshStats(), ...(s.st || {}) }; G.radio = (s.radio || []).slice(); G.ach = (s.ach || []).slice();
   syncShredders();
   RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear();
-  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); const anc = rp[3] != null && rp[3] >= 0 ? rp[3] : shredCell(nearestShredder(p)); RB.list.push(newRoomba(p, tangentOf(p.clone().normalize()), anc)); }
+  for (const rp of (s.roombas || []).slice(0, G.roombaCount)) { const p = new THREE.Vector3(rp[0], rp[1], rp[2]); surf(p); const anc = rp[3] != null && rp[3] >= 0 ? rp[3] : shredCell(nearestShredder(p)); const rb = newRoomba(p, tangentOf(p.clone().normalize()), anc); if (Array.isArray(rp[4]) && rp[4].length) { rb.carry = rp[4].filter((id) => isRem(id)); rb.load = rb.carry.reduce((a, id) => a + TYPES[W.type[id]].s, 0); rb.st = rb.carry.length ? 1 : 0; } RB.list.push(rb); }
   syncRoombaCount();
   if (s.player) placePlayer(new THREE.Vector3().fromArray(s.player.p), new THREE.Vector3().fromArray(s.player.f)); else spawnAtShredder();
   PL.pitch = s.player ? s.player.pitch : -0.12;
   updateHeldModel(); MM.dirty = true; trashDirty = natureDirty = true;
   if (!s.ach) achTick(true); // alte Spielstände: bereits erfüllte Erfolge still nachtragen
+  // Reparatur: Teile im Tank bei eingebautem Bordschredder, verschollene Teile (alte Versionen)
+  G.repaired = 0;
+  if (G.veh.auto && VEH.items.length) { const ids = VEH.items.splice(0); VEH.load = 0; G.shredded += ids.length; G.coins += shredValue(ids); G.repaired += ids.length; }
+  let bits = 0; for (let i = 0; i < W.removed.length; i++) { let b = W.removed[i]; while (b) { b &= b - 1; bits++; } }
+  const held = G.loose.size + G.inv.length + VEH.items.length + RB.list.reduce((a, r) => a + r.carry.length, 0);
+  const lost = bits - G.shredded - held;
+  if (lost > 0) { G.shredded += lost; G.coins += lost * TURBO[G.upg.turbo].v; G.repaired += lost; }
 }
 function newGameState(seed) {
   genWorld(seed); updateGroundGeometry();
@@ -2353,6 +2363,7 @@ function openStats() {
     <span>Geschreddert</span><b>${fmt(G.shredded)}</b><span>Noch übrig</span><b>${fmt(left)}</b><span>Sauber</span><b>${fmtD(G.shredded / TOTAL * 100, 2)} %</b>
     <span>Münzen gesamt</span><b>${fmt(G.totalCoins)}</b><span>Roombas</span><b>${G.roombaCount}</b><span>Schredder</span><b>${G.shredders.length}</b>
     <span>Aufgehoben</span><b>${fmt(G.st.picked)}</b><span>Wurf-Treffer</span><b>${fmt(G.st.hits)}</b><span>Gelaufen</span><b>${fmtD(G.st.walked / 1000, 2)} km</b>
+    <span>Noch auf dem Boden</span><b>${fmt(RADAR.ground)}</b><span>Im Korb/Behälter</span><b>${fmt(G.inv.length)}</b><span>Im Kehrmaxx-Tank</span><b>${fmt(VEH.items.length)}</b><span>Bei Roombas unterwegs</span><b>${fmt(RB.list.reduce((a, r) => a + r.carry.length, 0))}</b>
     <span>Saubere Flächen</span><b>${fmt(G.st.cells)}</b>${G.st.cheats ? `<span>Cheats benutzt</span><b>${fmt(G.st.cheats)}</b>` : ''}<span>Erfolge</span><b>${G.ach.length}/${ACH.length}</b>
     <span>Spielzeit</span><b>${fmtClock(G.played)}</b><span>Planet</span><b>Blühonia #${W.seed}</b></div>`);
 }
@@ -2386,7 +2397,7 @@ function updateHUD(dt) {
   hudT -= dt; if (hudT > 0) return; hudT = 0.1;
   $('#coinTxt').textContent = fmt(G.coins); $('#timeTxt').textContent = fmtClock(G.played);
   const left = TOTAL - G.shredded; $('#trashTxt').textContent = fmt(left) + ' übrig'; const pct = G.shredded / TOTAL * 100;
-  $('#cleanTxt').textContent = fmtD(pct, pct < 10 ? 2 : 1) + ' %'; $('#cleanBar').style.width = Math.max(pct, 0.6) + '%';
+  { const dd = pct < 10 || pct >= 99 ? 100 : 10; const shown = G.shredded >= TOTAL ? 100 : Math.floor(pct * dd) / dd; $('#cleanTxt').textContent = fmtD(shown, dd === 100 ? 2 : 1) + ' %'; } $('#cleanBar').style.width = Math.max(pct, 0.6) + '%';
   const u = VEH.driving ? (G.veh.auto ? 0 : VEH.load) : invUnits(), cap = VEH.driving ? (G.veh.auto ? 0 : VCAP) : CAP[G.upg.cap].v;
   if (VEH.driving && G.veh.auto) { if (_hudInv.c !== -2) { _hudInv.c = -2; _hudInv.u = -1; $('#invTxt').textContent = '♻️ Bordschredder'; $('#invBar').style.width = '100%'; } }
   else
@@ -2402,14 +2413,41 @@ function updateHUD(dt) {
   if (showV) { const lbl = drv ? 'Aussteigen' : 'Einsteigen'; if (vb.dataset.l !== lbl) { vb.dataset.l = lbl; vb.querySelector('small').textContent = lbl; vb.classList.toggle('exit', drv); } }
   if (target < 0 && targetRb < 0) $('#btnPick').classList.add('dim');
   const pc = drv ? 0 : RB.carried.length; $('#btnPlace').classList.toggle('hidden', !pc); if (pc) $('#placeN').textContent = pc > 1 ? `Absetzen ×${pc}` : 'Absetzen';
-  // Kompass zum nächsten Schredder
-  const si = nearestShredder(PL.pos), s = SH[si];
+  // Müll-Radar für die letzten Teile, sonst Kompass zum nächsten Schredder
+  const rt = radarTarget();
+  if (rt) {
+    _v1.subVectors(rt.p, PL.pos); _v1.addScaledVector(PL.up, -_v1.dot(PL.up)); _right.crossVectors(PL.f, PL.up);
+    const ang = Math.atan2(_v1.dot(_right), _v1.dot(PL.f)), dist = R * Math.acos(clamp(rt.p.clone().normalize().dot(PL.up), -1, 1));
+    $('#arrow').style.transform = `rotate(${ang}rad)`; $('#compTxt').textContent = `🔍 ${rt.label} ${fmt(dist)} m · noch ${fmt(RADAR.left)}`;
+    $('#compass').classList.add('radar');
+  }
+  const si = nearestShredder(PL.pos), s = rt ? null : SH[si];
+  if (!rt) $('#compass').classList.remove('radar');
   if (s) {
     _v1.subVectors(s.p, PL.pos); _v1.addScaledVector(PL.up, -_v1.dot(PL.up)); _right.crossVectors(PL.f, PL.up);
     const ang = Math.atan2(_v1.dot(_right), _v1.dot(PL.f)); const dist = R * Math.acos(clamp(s.p.clone().normalize().dot(PL.up), -1, 1));
     $('#arrow').style.transform = `rotate(${ang}rad)`; $('#compTxt').textContent = `${s.mini ? 'Mini-Schredder' : 'Schredder'} ${fmt(dist)} m`;
   }
   if (PANEL === 'shop') { $('#panelExtra').innerHTML = CI + ' ' + fmt(G.coins) + (NET.mode === 'guest' ? ' (Team)' : ''); $('#panelBody').querySelectorAll('[data-buy]').forEach((b) => { const c = costOf(b.dataset.buy); b.disabled = c == null || G.coins < c; }); }
+}
+
+// ---------------- Müll-Radar ----------------
+const RADAR = { t: 0, list: [], left: 0, ground: 0 };
+function radarScan() {
+  const list = []; let ground = 0;
+  for (let i = 0; i < TOTAL; i++) if (!isRem(i)) { ground++; if (list.length < 101) list.push(new THREE.Vector3(W.pos[i * 3], W.pos[i * 3 + 1], W.pos[i * 3 + 2])); }
+  for (const [, L] of G.loose) { ground++; if (list.length < 101) list.push(new THREE.Vector3(L[0], L[1], L[2])); }
+  RADAR.ground = ground; RADAR.left = TOTAL - G.shredded; RADAR.list = ground <= 100 ? list : [];
+}
+function radarTarget() {
+  RADAR.t -= 0.1; if (RADAR.t <= 0) { RADAR.t = 1; radarScan(); }
+  if (G.inv.length || (VEH.items.length && !G.veh.auto) || G.won) return null; // erst abladen
+  if (RADAR.list.length) { let best = null, bd = 1e18; for (const p of RADAR.list) { const d = p.distanceToSquared(PL.pos); if (d < bd) { bd = d; best = p; } } return { p: best, label: 'Müll' }; }
+  if (RADAR.ground === 0 && RADAR.left > 0) { // Rest steckt bei Roombas oder im Tank
+    const r = RB.list.find((q) => q.carry.length); if (r) return { p: r.p, label: 'Roomba mit Ladung' };
+    if (VEH.items.length) return { p: VEH.p, label: 'Kehrmaxx-Tank' };
+  }
+  return null;
 }
 
 // ---------------- Eingabe ----------------
@@ -2490,7 +2528,11 @@ async function startSlot(i, fresh) {
   if (fresh) showStory(go); else go();
   saveGame();
 }
-function startPlaying() { VIEW.mode = 'play'; playVisuals(); G.running = true; $('#hud').classList.remove('hidden'); $('#title').classList.add('hidden'); $('#loading').classList.add('hidden'); closePanel(); trashDirty = natureDirty = true; hudTargetChanged(); }
+function startPlaying() {
+  VIEW.mode = 'play'; playVisuals(); G.running = true; $('#hud').classList.remove('hidden'); $('#title').classList.add('hidden'); $('#loading').classList.add('hidden'); closePanel(); trashDirty = natureDirty = true; hudTargetChanged();
+  if (G.repaired) { toast(`${fmt(G.repaired)} verschollene Teile gefunden und geschreddert 🔧`, 'good'); G.repaired = 0; saveGame(); }
+  checkWin();
+}
 function leaveToTitle() {
   if (NET.mode === 'guest') { try { NET.peer && NET.peer.destroy(); } catch (e) { } NET.mode = 'solo'; NET.host = null; clearRemotes(); RB.list.length = 0; }
   else if (NET.mode === 'host') stopHosting();
@@ -2568,7 +2610,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
