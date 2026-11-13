@@ -76,6 +76,9 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 .toast{background:rgba(18,28,38,.82);padding:8px 14px;border-radius:14px;font-size:14px;animation:tin .25s ease-out;max-width:86vw;text-align:center}
 .toast.good{background:rgba(40,130,70,.9)}
 .toast.bad{background:rgba(170,50,50,.9)}
+.toast.find{background:linear-gradient(135deg,rgba(90,60,140,.95),rgba(40,30,80,.95));border:2px solid #ffd23f;display:flex;flex-direction:column;gap:1px;padding:7px 14px}
+.toast.find b{font-family:'Lilita One';font-size:15px;color:#ffd23f}
+.toast.find span{font-size:11px;opacity:.9}
 @keyframes tin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
 #floaters{position:fixed;inset:0;pointer-events:none;z-index:25}
 .floater{position:absolute;font-family:'Lilita One';font-size:22px;color:var(--yel);text-shadow:0 2px 0 rgba(0,0,0,.4);animation:fup 1.1s ease-out forwards;white-space:nowrap}
@@ -552,7 +555,13 @@ function groundH(x, y, z) { // Höhe der tatsächlichen Bodengeometrie
   return fx >= fy ? ha + (hb - ha) * fx + (hd - hb) * fy : ha + (hc - ha) * fy + (hd - hc) * fx;
 }
 // Punkt auf Oberfläche (Richtung beliebig)
-function surf(v, lift = 0) { const l = v.length(); const h = groundH(v.x, v.y, v.z); return v.multiplyScalar((R + h + lift) / l); }
+function surf(v, lift = 0) { const l = v.length(); let h = groundH(v.x, v.y, v.z); const f = structFloorH(v.x, v.y, v.z); if (f > h) h = f; return v.multiplyScalar((R + h + lift) / l); }
+// Begehbare Plattform von Resort/Laden
+function structFloorH(x, y, z) {
+  const L = W.structs; if (!L || !L.length) return -1e9; let best = -1e9;
+  for (const st of L) { if (!st.floor) continue; const e = rockEdge(st, x, y, z); if (e.d < e.edge + 0.12 && e.edge > 0) best = Math.max(best, st.floorH); }
+  return best;
+}
 
 // ---------------- Abflachungs-Shader (Planet wirkt flach) ----------------
 const UNI = { uUp: { value: new THREE.Vector3(0, 1, 0) }, uR: { value: R }, uFlat: { value: 1 } };
@@ -930,7 +939,7 @@ const W = {
   pos: new Float32Array(TOTAL * 3), type: new Uint8Array(TOTAL), yaw: new Uint8Array(TOTAL), vari: new Uint8Array(TOTAL), cell: new Uint16Array(TOTAL),
   cellStart: new Int32Array(CELLS + 1), cellInit: new Uint16Array(CELLS), cellLeft: new Uint16Array(CELLS),
   removed: new Uint8Array(TOTAL >> 3),
-  trees: [], rocks: [], bushes: [], structs: [],
+  trees: [], rocks: [], bushes: [], structs: [], cPos: null, cType: null, cCell: null, cByCell: new Map(),
   dPos: new Float32Array(CELLS * 6 * 3), dType: new Uint8Array(CELLS * 6), dYaw: new Float32Array(CELLS * 6), dS: new Float32Array(CELLS * 6),
   obs: new Map(),
 };
@@ -1073,7 +1082,13 @@ function makeStruct(kind, dir, face, w, d) {
   let hMax = -1e9, hMin = 1e9; const q = new THREE.Vector3();
   for (let i = -2; i <= 2; i++) for (let j = -2; j <= 2; j++) { q.copy(n).addScaledVector(x, i / 2 * w / 2 / R).addScaledVector(f, j / 2 * d / 2 / R).normalize(); const h = groundH(q.x, q.y, q.z); hMax = Math.max(hMax, h); hMin = Math.min(hMin, h); }
   const top = R + hMax + 0.08, p = n.clone().multiplyScalar(top);
-  return { kind, x: p.x, y: p.y, z: p.z, n: [n.x, n.y, n.z], ax: [x.x, x.y, x.z], az: [f.x, f.y, f.z], f: [f.x, f.y, f.z], s: 1, poly: rectPoly(w, d), maxR: Math.hypot(w, d) / 2, w, d, hMin, hMax, tall: kind === 'resort', cf: 1 };
+  const st = { kind, x: p.x, y: p.y, z: p.z, n: [n.x, n.y, n.z], ax: [x.x, x.y, x.z], az: [f.x, f.y, f.z], f: [f.x, f.y, f.z], s: 1, poly: rectPoly(w, d), maxR: Math.hypot(w, d) / 2, w, d, hMin, hMax, tall: kind === 'resort', cf: 1, floor: true, floorH: hMax + 0.08 };
+  const sub = (lx, lz, bw, bd) => { const q = new THREE.Vector3(p.x, p.y, p.z).addScaledVector(x, lx).addScaledVector(f, lz); return { x: q.x, y: q.y, z: q.z, n: st.n, ax: st.ax, az: st.az, w: bw, d: bd, maxR: Math.hypot(bw, bd) / 2, s: 1, cf: 1 }; };
+  if (kind === 'resort') { // Lobby ist begehbar: Wände mit Türöffnung + Pool
+    st.blockers = [sub(-2, -7.6, 14, 0.4), sub(-8.8, -4.8, 0.4, 6), sub(4.8, -4.8, 0.4, 6), sub(-6.1, -2.0, 5.8, 0.4), sub(2.1, -2.0, 5.8, 0.4), sub(-4, 3.6, 9.8, 5.2)];
+    st.door = sub(-2, -2.0, 2.4, 0.4);
+  } else st.blockers = [st];
+  return st;
 }
 function placeStructs() {
   const pole = new THREE.Vector3(0, 1, 0), d = [0, 0, 0];
@@ -1143,13 +1158,34 @@ function resolveOverlaps(dry) {
   }
   // Sicherheitsrunde: kein Teil unter Resort oder Laden (alle Teile direkt prüfen)
   for (const st of W.structs) { const r2 = (st.maxR + 1) ** 2; for (let i = 0; i < TOTAL; i++) { const dx = W.pos[i * 3] - st.x, dy = W.pos[i * 3 + 1] - st.y, dz = W.pos[i * 3 + 2] - st.z; if (dx * dx + dy * dy + dz * dz < r2) pushOut(i, st); } }
+  placeCollectibles(free);
+}
+// ---------------- Fundstücke verteilen (zählen NICHT zu den 100.000) ----------------
+function placeCollectibles(free) {
+  const rnd = mulberry32((W.seed ^ 0x9e3779b9) >>> 0), d = [0, 0, 0];
+  W.cPos = new Float32Array(COLL_N * 3); W.cType = new Uint8Array(COLL_N); W.cCell = new Uint16Array(COLL_N);
+  W.cByCell = new Map(); let k = 0;
+  COLL.forEach((def, t) => {
+    for (let n = 0; n < def.parts; n++) {
+      let x = 0, y = 0, z = 0;
+      for (let tr = 0; tr < 200; tr++) {
+        randDir(rnd, d); const rr = R + groundH(d[0], d[1], d[2]);
+        x = d[0] * rr; y = d[1] * rr; z = d[2] * rr;
+        if (free(x, y, z)) break;
+      }
+      W.cPos[k * 3] = x; W.cPos[k * 3 + 1] = y; W.cPos[k * 3 + 2] = z; W.cType[k] = t;
+      const c = dirToCell(x, y, z); W.cCell[k] = c;
+      let a = W.cByCell.get(c); if (!a) W.cByCell.set(c, (a = [])); a.push(k);
+      k++;
+    }
+  });
 }
 function rebuildObstacles() {
   W.obs = new Map();
   const add = (x, y, z, r) => { const c = dirToCell(x, y, z); let a = W.obs.get(c); if (!a) W.obs.set(c, (a = [])); a.push([x, y, z, r]); };
   for (const t of W.trees) add(t.x, t.y, t.z, t.r);
   for (const r of W.rocks) { add(r.x, r.y, r.z, r.r); W.obs.get(dirToCell(r.x, r.y, r.z)).at(-1).push(r); }
-  for (const st of W.structs || []) { add(st.x, st.y, st.z, st.maxR); W.obs.get(dirToCell(st.x, st.y, st.z)).at(-1).push(st); }
+  for (const st of W.structs || []) for (const bl of st.blockers || [st]) { add(bl.x, bl.y, bl.z, bl.maxR); W.obs.get(dirToCell(bl.x, bl.y, bl.z)).at(-1).push(bl); }
   for (const s of SH) add(s.p.x, s.p.y, s.p.z, s.mini ? 1.15 : 1.4);
 }
 function recountCells() {
@@ -1467,6 +1503,7 @@ function updateRoombas(dt) {
         RB.claimed.add(r.tg);
       }
       _v3.set(W.pos[r.tg * 3], W.pos[r.tg * 3 + 1], W.pos[r.tg * 3 + 2]);
+      if (W.cByCell.has(r.cell0 = dirToCell(r.p.x, r.p.y, r.p.z))) collectAround(r.p, 0.75, 'roomba');
       if (moveOnSurface(r, _v3, spd, dt) < 0.38) {
         const id = r.tg; RB.claimed.delete(id); r.tg = -1;
         if (!isRem(id)) { removeFromGround(id); removedNow.push(id); r.carry.push(id); r.load += TYPES[W.type[id]].s; spawnBurst(_v3, 4, TYPES[W.type[id]].tintCols[0], 1.2); }
@@ -1820,11 +1857,11 @@ function updateCamera(dt) {
 const CAM_FWD = new THREE.Vector3();
 
 // ---------------- Zielen ----------------
-let target = -1, targetRb = -1;
+let target = -1, targetRb = -1, targetCo = -1;
 const _tc = new THREE.Vector3();
 const RB_HL_GEO = ops(Cy(0.33, 0.35, 0.16, 18), [['t', 0, 0.07, 0]]);
 function updateTarget() {
-  if (VEH.driving) { hl.visible = false; if (target >= 0 || targetRb >= 0) { target = targetRb = -1; hudTargetChanged(); } return; }
+  if (VEH.driving) { hl.visible = false; if (target >= 0 || targetRb >= 0 || targetCo >= 0) { target = targetRb = targetCo = -1; hudTargetChanged(); } return; }
   camera.getWorldDirection(CAM_FWD);
   const o = camera.position, reach = REACH[G.upg.reach].v;
   let best = -1, bs = 1e9;
@@ -1847,6 +1884,17 @@ function updateTarget() {
     for (const c of PL.near) for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) if (!isRem(i)) near(i, W.pos[i * 3], W.pos[i * 3 + 1], W.pos[i * 3 + 2]);
     for (const [id, L] of G.loose) near(id, L[0], L[1], L[2]);
   }
+  // Fundstücke
+  let coBest = -1, coScore = 1e9;
+  for (const i of CO.near) {
+    const x = W.cPos[i * 3], y = W.cPos[i * 3 + 1], z = W.cPos[i * 3 + 2], r = Math.hypot(x, y, z);
+    flatCPU(x + x / r * 0.3, y + y / r * 0.3, z + z / r * 0.3, PL.up, _tc);
+    const vx = _tc.x - o.x, vy = _tc.y - o.y, vz = _tc.z - o.z, t = vx * CAM_FWD.x + vy * CAM_FWD.y + vz * CAM_FWD.z;
+    if (t < 0 || t > reach + 1.2) continue;
+    const perp2 = vx * vx + vy * vy + vz * vz - t * t, rr = 0.35 + t * 0.05; if (perp2 > rr * rr) continue;
+    const sc = t + Math.sqrt(Math.max(0, perp2)) * 2.5 - 1.2; if (sc < coScore) { coScore = sc; coBest = i; }
+  }
+  if (coBest >= 0 && coScore < bs) best = -1; else coBest = -1;
   // Roombas lassen sich aufheben (nur Solo/Host)
   let rbBest = -1;
   if (NET.mode !== 'guest') {
@@ -1857,10 +1905,16 @@ function updateTarget() {
       if (t < 0 || t > reach + 0.8) return; const perp2 = vx * vx + vy * vy + vz * vz - t * t, rr = 0.4 * RSCALE[clamp(G.upg.rcap | 0, 0, 4)] + t * 0.04; if (perp2 > rr * rr) return;
       const sc = t + Math.sqrt(Math.max(0, perp2)) * 2.5 - 0.6; if (sc < rbs) { rbs = sc; rbBest = i; }
     });
-    if (rbBest >= 0 && rbs < bs) best = -1; else rbBest = -1;
+    if (rbBest >= 0 && rbs < bs && rbs < coScore) { best = -1; coBest = -1; } else rbBest = -1;
   }
-  if (best !== target || rbBest !== targetRb) { target = best; targetRb = rbBest; hudTargetChanged(); }
-  if (targetRb >= 0) {
+  if (best !== target || rbBest !== targetRb || coBest !== targetCo) { target = best; targetRb = rbBest; targetCo = coBest; hudTargetChanged(); }
+  if (targetCo >= 0) {
+    const i = targetCo, x = W.cPos[i * 3], y = W.cPos[i * 3 + 1], z = W.cPos[i * 3 + 2], rn = Math.hypot(x, y, z);
+    hl.geometry = CO.ig[W.cType[i]].prims[0].geo;
+    const n = _v1.set(x / rn, y / rn, z / rn), lift = 0.26 + Math.sin(performance.now() / 625 + i) * 0.05;
+    const p = _v2.set(x, y, z).addScaledVector(n, lift), f = tangentOf(n).applyAxisAngle(n, performance.now() / 1111 + i);
+    writeMatNF(hl.matrix.elements, 0, p.x, p.y, p.z, n.x, n.y, n.z, f.x, f.y, f.z, 1.3); hl.matrixWorldNeedsUpdate = true; hl.visible = true;
+  } else if (targetRb >= 0) {
     const r = RB.list[targetRb]; hl.geometry = RB_HL_GEO; writeMatNF(hl.matrix.elements, 0, r.p.x, r.p.y, r.p.z, ...(_v1.copy(r.p).normalize().toArray()), r.f.x, r.f.y, r.f.z, RSCALE[clamp(G.upg.rcap | 0, 0, 4)]); hl.matrixWorldNeedsUpdate = true; hl.visible = true;
   } else if (target >= 0) {
     const T = TYPES[W.type[target]]; const L = G.loose.get(target);
@@ -1910,6 +1964,7 @@ function sfx(k) {
     case 'thud': noiseHit(0.12, 0.25, 300); break;
     case 'error': tone(160, 0.2, 'square', 0.1, -40); break;
     case 'page': tone(660, 0.06, 'triangle', 0.08, 120); break;
+    case 'find': [784, 1046, 1318, 1568].forEach((f, i) => tone(f, 0.16, 'triangle', 0.1, 0, i * 0.055)); tone(2093, 0.3, 'sine', 0.05, 0, 0.22); break;
     case 'chirp': { const b = 2400 + Math.random() * 1400; for (let k = 0; k < 2 + ((Math.random() * 3) | 0); k++) tone(b + Math.random() * 500, 0.07, 'sine', 0.05, 900, k * 0.11); break; }
     case 'flap': noiseHit(0.25, 0.08, 1400, 'bandpass'); break;
     case 'magnet': tone(120, 1.1, 'sawtooth', 0.12, 900); tone(240, 1.1, 'sine', 0.1, 1500); noiseHit(1.2, 0.25, 800, 'bandpass'); break;
@@ -1940,6 +1995,7 @@ function onCellChanged(c) {
 }
 function addCoins(v) { G.coins += v; G.totalCoins += v; }
 function tryPick() {
+  if (targetCo >= 0) { collectPiece(targetCo); target = targetRb = targetCo = -1; hudTargetChanged(); return; }
   if (targetRb >= 0) { pickRoomba(targetRb); return; }
   if (target < 0 && openShopTap()) return;
   if (target < 0) { if (G.upg.broom > 0) doSweep(); return; }
@@ -1970,7 +2026,7 @@ function doSweep() {
   cand.sort((a, b) => a[0] - b[0]);
   const got = [];
   for (const [, id] of cand) { const s = TYPES[W.type[id]].s; if (units + s > cap && (G.inv.length + got.length) > 0) break; units += s; got.push(id); }
-  sfx('sweep');
+  sfx('sweep'); collectAround(ctr, rad, null);
   if (!got.length) { if (!cand.length) toast('Hier gibt es nichts zu fegen'); else { toast('Behälter voll! Ab zum Schredder 🏭', 'bad'); flashInv(); } return; }
   const from = camera.position.clone().addScaledVector(PL.up, -0.6);
   got.forEach((id, k) => { const L = G.loose.get(id); const p = L ? new THREE.Vector3(L[0], L[1], L[2]) : new THREE.Vector3(W.pos[id * 3], W.pos[id * 3 + 1], W.pos[id * 3 + 2]); takeItem(id, k < 6 ? 2 : 0); if (k < 10) addArcFlyer(id, p, from, k * 0.03, -1); });
@@ -2130,7 +2186,7 @@ function makeSave() {
     loose: [...[...G.loose].map(([id, L]) => [id, ...L]), ...FLY.filter((f) => !f.arc).map((f) => [f.id, f.pos.x, f.pos.y, f.pos.z, 0])], inv: G.inv.slice(),
     player: { p: PL.pos.toArray(), f: PL.f.toArray(), pitch: PL.pitch },
     roombas: [...RB.list.map((r) => [r.p.x, r.p.y, r.p.z, r.anchor ?? -1, r.carry.slice()]), ...RB.carried.map((r) => [PL.pos.x, PL.pos.y, PL.pos.z, dirToCell(PL.up.x, PL.up.y, PL.up.z), r.carry.slice()])], ts: Date.now(),
-    st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(), kits: G.kits || 0,
+    st: { ...G.st }, ach: G.ach.slice(), radio: G.radio.slice(), kits: G.kits || 0, coll: b64enc(G.coll),
     veh: { ...G.veh, p: VEH.p.toArray(), f: VEH.f.toArray(), items: VEH.items.slice() },
   };
 }
@@ -2152,6 +2208,7 @@ function applySave(s) {
   G.loose = new Map((s.loose || []).map((a) => [a[0], [a[1], a[2], a[3], a[4]]]));
   G.inv = (s.inv || []).slice();
   G.kits = s.kits || 0;
+  G.coll = new Uint8Array(COLL_N); if (s.coll) { const u = b64dec(s.coll); G.coll.set(u.subarray(0, Math.min(u.length, COLL_N))); } collRecount(); STR.lobbyDirty = true; CO.dirty = true;
   G.st = { ...freshStats(), ...(s.st || {}) }; G.radio = (s.radio || []).slice(); G.ach = (s.ach || []).slice();
   syncShredders();
   RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear();
@@ -2174,7 +2231,8 @@ function newGameState(seed) {
   G.coins = 0; G.totalCoins = 0; G.shredded = 0; G.played = 0; G.tut = 0; G.created = Date.now(); G.won = false;
   G.upg = { cap: 0, broom: 0, speed: 0, reach: 0, turbo: 0, rspeed: 0, rcap: 0, rrange: 0, combo: 0 };
   VEH.driving = false; VEH.driver = -1; G.veh = { owned: false, auto: false, spd: 0 }; VEH.items = []; VEH.load = 0; COMBO.n = 0; COMBO.tier = 0; COMBO.mult = 1; COMBO.bank = 0; G.invMult = new Map();
-  G.roombaCount = 0; G.shredders = [[0, R, 0]]; G.loose = new Map(); G.inv = []; G.kits = 0; G.st = freshStats(); G.ach = []; G.radio = [];
+  G.roombaCount = 0; G.shredders = [[0, R, 0]]; G.loose = new Map(); G.inv = []; G.kits = 0;
+  G.coll = new Uint8Array(COLL_N); collRecount(); STR.lobbyDirty = true; CO.dirty = true; G.st = freshStats(); G.ach = []; G.radio = [];
   syncShredders(); RB.list.length = 0; RB.carried.length = 0; RB.claimed.clear(); spawnAtShredder(); updateHeldModel(); MM.dirty = true;
 }
 function spawnAtShredder() { const d = [0, 0, 0]; polarDir(5.5, -0.6, d); const p = new THREE.Vector3(d[0], d[1], d[2]).multiplyScalar(R); placePlayer(p); const toS = SH[0].p.clone().sub(PL.pos); placePlayer(p, toS.addScaledVector(PL.up, -toS.dot(PL.up)).normalize().applyAxisAngle(PL.up, 0.45)); PL.pitch = -0.12; }
@@ -2243,7 +2301,7 @@ function hostOnData(conn, info, m) {
   switch (m.t) {
     case 'hello': {
       info.name = String(m.name || 'Gast').slice(0, 14); info.ready = true; info.chr = clamp(m.chr | 0, 0, CHAR_PRESETS.length - 1);
-      const snap = JSON.stringify({ seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray(), vd: VEH.driving ? 0 : VEH.driver });
+      const snap = JSON.stringify({ seed: W.seed, coins: G.coins, shredded: G.shredded, upg: G.upg, rc: G.roombaCount, shr: G.shredders, removed: b64enc(W.removed), loose: [...G.loose].map(([id, L]) => [id, ...L]), you: info.id, color: info.color, host: myName(), list: rosterList(), hp: PL.pos.toArray(), coll: b64enc(G.coll), veh: G.veh, vp: VEH.p.toArray(), vf: VEH.f.toArray(), vd: VEH.driving ? 0 : VEH.driver });
       const CH_ = 14000, n = Math.ceil(snap.length / CH_);
       for (let i = 0; i < n; i++) conn.send({ t: 'snap', i, n, d: snap.slice(i * CH_, (i + 1) * CH_) });
       addRemote(info.id, info.name, info.color, info.chr);
@@ -2254,6 +2312,7 @@ function hostOnData(conn, info, m) {
     }
     case 'kitp': { const r = Array.isArray(m.p) ? placeKit(m.p) : 'none'; if (r === 'ok') { toast(`${info.name} hat einen Mini-Schredder aufgestellt`); conn.send({ t: 'msg', txt: 'Mini-Schredder aufgestellt! 🏭' }); } else conn.send({ t: 'msg', txt: KIT_ERR[r], bad: true }); netBroadcastState(true); break; }
     case 'char': { info.chr = clamp(m.c | 0, 0, CHAR_PRESETS.length - 1); addRemote(info.id, info.name, info.color, info.chr); netBroadcast({ t: 'pl', list: rosterList() }); break; }
+    case 'cget': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; netBroadcast({ t: 'cgot', i, by: info.name }, conn); toast(`${info.name} hat ein Fundstück entdeckt ✨`); } break; }
     case 'cb': { const v = clamp(+m.v || 0, 0, 250000); if (v > 0) { addCoins(v); toast(`${info.name}: Combo-Bonus +${fmt(v)}`); } break; }
     case 'veh': {
       if (m.a === 'in') { if (G.veh.owned && VEH.driver < 0 && !VEH.driving) { VEH.driver = info.id; conn.send({ t: 'veh', a: 'ok' }); } else conn.send({ t: 'veh', a: 'busy' }); }
@@ -2333,6 +2392,7 @@ function guestOnData(m, conn, peer) {
     case 'fx': { const s = SH[m.si]; if (s) { s.anim = 0.7; if (s.p.distanceTo(PL.pos) < 45) spawnBurst(s.p.clone().addScaledVector(s.n, 0.35).addScaledVector(s.f, 1.1 * s.sc), 3, WHITE_C, 1.6, 1, 3.5); } break; }
     case 'veh': { if (m.a === 'ok') doEnter(); else { VEH.waitReply = false; toast('Da sitzt schon jemand drin'); } break; }
     case 'up': { G.kits = m.kits || 0; G.upg = { combo: 0, ...m.upg }; G.roombaCount = m.rc; G.coins = m.c; if (m.veh) { const was = G.veh.owned; G.veh = m.veh; if (!was && m.veh.owned && m.vp) { placeVehicle(new THREE.Vector3().fromArray(m.vp), new THREE.Vector3().fromArray(m.vf)); } } if (JSON.stringify(m.shr) !== JSON.stringify(G.shredders)) { G.shredders = m.shr; syncShredders(); } if (PANEL === 'shop') renderShop(); break; }
+    case 'cgot': { const i = m.i | 0; if (i >= 0 && i < COLL_N && !G.coll[i]) { G.coll[i] = 1; G.collCount[collTypeOf(i)]++; STR.lobbyDirty = true; CO.dirty = true; if (m.by) toast(`${m.by} hat ein Fundstück entdeckt ✨`); } break; }
     case 'pl': syncRoster(m.list); break;
     case 'msg': toast(m.txt, m.bad ? 'bad' : ''); break;
   }
@@ -2342,6 +2402,7 @@ function startGuest(s, conn, peer) {
   NET.mode = 'guest'; NET.host = conn; NET.peer = peer; NET.myId = s.you; NET.myColor = s.color; NET.hostName = s.host;
   genWorld(s.seed); updateGroundGeometry(); W.removed.set(b64dec(s.removed)); recountCells(); refreshAllGround();
   G.coins = s.coins; G.shredded = s.shredded; G.upg = s.upg; G.roombaCount = s.rc; G.shredders = s.shr; G.loose = new Map(s.loose.map((a) => [a[0], [a[1], a[2], a[3], a[4]]])); G.inv = []; G.tut = 2; G.won = false;
+  G.coll = new Uint8Array(COLL_N); if (s.coll) { const u = b64dec(s.coll); G.coll.set(u.subarray(0, Math.min(u.length, COLL_N))); } collRecount(); STR.lobbyDirty = true; CO.dirty = true;
   G.st = freshStats(); G.st.friends = 1; G.radio = ['start', 'firstPick', 'firstCoin', 'full', 'p1', 'p5', 'p10', 'p25', 'p50', 'p75', 'p90']; G.ach = []; achTick(true); G.ach = G.ach.filter((id) => id !== 'friends');
   syncShredders(); RB.list.length = 0; clearRemotes(); syncRoster(s.list);
   G.upg = { combo: 0, ...G.upg }; G.veh = s.veh || { owned: false, auto: false, spd: 0 }; VEH.driving = false; VEH.items = []; VEH.load = 0; VEH.driver = s.vd ?? -1;
@@ -2402,6 +2463,7 @@ function openMenu() {
     ${guest ? '<div class="small">Du bist Gast – der Host speichert den Planeten.</div>' : '<button class="btn sec" id="mSave">💾 Speichern</button>'}
     ${guest ? '' : `<button class="btn grn" id="mInvite">👋 ${NET.mode === 'host' ? 'Einladung anzeigen' : 'Freunde einladen'}</button>`}
     <button class="btn sec" id="mAch">🏆 Erfolge (${G.ach.length}/${ACH.length})</button>
+    <button class="btn sec" id="mColl">✨ Sammlung (${collTotalDone()}/${COLL.length})</button>
     <button class="btn sec" id="mChar">🧍 Figur wählen (${CHAR_PRESETS[myChar()].name})</button>
     <button class="btn sec" id="mStats">📊 Statistik</button>
     ${guest ? '' : '<button class="btn sec" id="mCheat">🧪 Cheats</button>'}
@@ -2413,7 +2475,7 @@ function openMenu() {
   if (!guest) { $('#mSave').onclick = () => saveGame(true); $('#mInvite').onclick = hostStart; $('#mExp').onclick = openExport; }
   if (!guest) $('#mCheat').onclick = openCheats;
   $('#mChar').onclick = openCharPanel;
-  $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements;
+  $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements; $('#mColl').onclick = openCollection;
   $('#mStory').onclick = () => { closePanel(); G.running = false; $('#hud').classList.add('hidden'); showStory(() => { G.running = true; $('#hud').classList.remove('hidden'); }); };
   $('#mQuit').onclick = async () => { if (!guest) await saveGame(); leaveToTitle(); };
 }
@@ -2461,6 +2523,7 @@ function superMagnet(ids) {
     .filter((a) => a[0] < 50 * 50).sort((a, b) => a[0] - b[0]).slice(0, 180);
   near.forEach(([d2, id, p], k) => { const f = { id, t: W.type[id], arc: true, p0: p, p1: to, time: -(Math.sqrt(d2) * 0.02 + k * 0.004), dur: 0.55, si: -1, pos: p.clone(), spin: Math.random() * TAU }; FLY.push(f); });
   for (const id of ids) { if (G.loose.has(id)) G.loose.delete(id); else removeFromGround(id); G.invMult.delete(id); }
+  { const up = PL.up, cs = 0.5, pick = []; for (let i = 0; i < COLL_N; i++) { if (G.coll[i]) continue; const x = W.cPos[i * 3], y = W.cPos[i * 3 + 1], z = W.cPos[i * 3 + 2]; if ((x * up.x + y * up.y + z * up.z) / Math.hypot(x, y, z) >= cs) pick.push(i); } for (const i of pick) collectPiece(i); }
   trashDirty = natureDirty = true; MM.dirty = true;
   creditShred(ids, -1, 'me'); netBroadcastRm(ids);
   G.st.cheats = (G.st.cheats || 0) + 1;
@@ -2475,6 +2538,7 @@ function openStats() {
     <span>Münzen gesamt</span><b>${fmt(G.totalCoins)}</b><span>Roombas</span><b>${G.roombaCount}</b><span>Schredder</span><b>${G.shredders.length}</b>
     <span>Aufgehoben</span><b>${fmt(G.st.picked)}</b><span>Wurf-Treffer</span><b>${fmt(G.st.hits)}</b><span>Gelaufen</span><b>${fmtD(G.st.walked / 1000, 2)} km</b>
     <span>Noch auf dem Boden</span><b>${fmt(RADAR.ground)}</b><span>Im Korb/Behälter</span><b>${fmt(G.inv.length)}</b><span>Im Kehrmaxx-Tank</span><b>${fmt(VEH.items.length)}</b><span>Bei Roombas unterwegs</span><b>${fmt(RB.list.reduce((a, r) => a + r.carry.length, 0))}</b>
+    <span>Sammlung</span><b>${collTotalDone()}/${COLL.length}</b><span>Fundstücke</span><b>${fmt(G.coll.reduce((a, v) => a + v, 0))}/${fmt(COLL_N)}</b>
     <span>Saubere Flächen</span><b>${fmt(G.st.cells)}</b>${G.st.cheats ? `<span>Cheats benutzt</span><b>${fmt(G.st.cheats)}</b>` : ''}<span>Erfolge</span><b>${G.ach.length}/${ACH.length}</b>
     <span>Spielzeit</span><b>${fmtClock(G.played)}</b><span>Planet</span><b>Blühonia #${W.seed}</b></div>`);
 }
@@ -2500,7 +2564,8 @@ async function openExport() {
 let hudT = 0; const _hudInv = { u: -1, c: -1 };
 function hudTargetChanged() {
   const el = $('#targetLbl'), cr = $('#cross'), pb = $('#btnPick');
-  if (targetRb >= 0) { el.innerHTML = `Roomba · <b>aufheben & umsetzen</b>`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
+  if (targetCo >= 0) { const d = COLL[W.cType[targetCo]]; el.innerHTML = `✨ ${d.n} · <b>Fundstück!</b>`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
+  else if (targetRb >= 0) { el.innerHTML = `Roomba · <b>aufheben & umsetzen</b>`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
   else if (target >= 0) { const T = TYPES[W.type[target]]; el.innerHTML = `${T.n} · <b>${fmt(T.v * TURBO[G.upg.turbo].v)} ${CI}</b>${T.s > 1 ? ` · ${T.s} Einh.` : ''}`; el.classList.add('on'); cr.classList.add('on'); pb.classList.remove('dim'); }
   else { el.classList.remove('on'); cr.classList.remove('on'); pb.classList.add('dim'); }
 }
@@ -2522,7 +2587,7 @@ function updateHUD(dt) {
   $('#btnPick').classList.toggle('hidden', drv); $('#cross').classList.toggle('hidden', drv);
   const vb = $('#btnVeh'), showV = drv || vehNear(); vb.classList.toggle('hidden', !showV);
   if (showV) { const lbl = drv ? 'Aussteigen' : 'Einsteigen'; if (vb.dataset.l !== lbl) { vb.dataset.l = lbl; vb.querySelector('small').textContent = lbl; vb.classList.toggle('exit', drv); } }
-  if (target < 0 && targetRb < 0) {
+  if (target < 0 && targetRb < 0 && targetCo < 0) {
     const el = $('#targetLbl'), pb = $('#btnPick');
     if (STR.aim) { const t = STR.aim === 'markt' ? '🛒 Putz-Markt · <b>antippen zum Einkaufen</b>' : '🛒 Shop-Automat · <b>antippen</b>'; if (el.innerHTML !== t) el.innerHTML = t; el.classList.add('on'); $('#cross').classList.add('on'); pb.classList.remove('dim'); if (!pb.dataset.shop) { pb.dataset.shop = '1'; pb.querySelector('small').textContent = 'Einkaufen'; } }
     else { el.classList.remove('on'); $('#cross').classList.remove('on'); pb.classList.add('dim'); if (pb.dataset.shop) { delete pb.dataset.shop; pb.querySelector('small').textContent = 'Aufheben'; } }
@@ -2687,6 +2752,7 @@ function frame(now) {
   updateStructs(dt);
   trashT -= dt; natureT -= dt;
   if (trashT <= 0 && (trashDirty || lastTrashPos.distanceToSquared(PL.pos) > 2.25)) { rebuildTrash(); trashT = 0.07; }
+  if (play && G.running) { CO.t -= dt; if (CO.t <= 0 || CO.dirty) { CO.t = 0.12; CO.dirty = false; rebuildCollectibles(); } }
   if (natureT <= 0 && (natureDirty || lastNatPos.distanceToSquared(PL.pos) > 9)) { rebuildNature(); natureT = 0.2; }
   UNI.uUp.value.copy(PL.up);
   if (play) {
@@ -2723,7 +2789,7 @@ async function boot() {
     decorateHud(); loadTip(); const tipI = setInterval(loadTip, 1600);
     $('#loadTxt').textContent = 'Lade Modelle …'; await loadAssets(); await sleep(10);
     $('#loadTxt').textContent = 'Baue Müll …'; buildTypes(); await sleep(10);
-    buildGroundMeshes(); initRenderGroups(); initRoombaMeshes(); initParticles(); initMinimap(); initOrbit(); initFauna();
+    buildGroundMeshes(); initRenderGroups(); initRoombaMeshes(); initParticles(); initMinimap(); initOrbit(); initFauna(); initCollectibles();
     try { makeCharThumbs(); } catch (e) { console.warn('Vorschau', e); }
     await storeInit();
     $('#loadTxt').textContent = 'Erschaffe Planet …'; await sleep(10);
@@ -2733,7 +2799,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { COLL, COLL_N, CO, collectPiece, collRecount, collTypeOf, collTotalDone, openCollection, makeChar, animChar, CHAR_PRESETS, guestSpec, openCharPanel, openShopTap, STR, nearShop, useKit, placeKit, comboCashout, MAP, openMap, closeMap, mapTap, FA, faunaManage, startPlaying, RADAR, radarTarget, rockEdge, renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -2897,6 +2963,9 @@ const RADIO = {
   resort20: 'Gute Nachrichten: Im Resort sind die ersten Zimmer bezugsfertig. Die Gäste fragen, warum es nach Bananenschale riecht.',
   resort50: 'Halbzeit! Der Pool im Resort ist gefüllt. Wer reinspringt, bezahlt Eintritt. Du auch.',
   resort100: 'Das Resort ist offiziell eröffnet! Die Gäste sind begeistert. Ich nehme natürlich das ganze Lob für mich.',
+  collect: 'Was hast du da gefunden? Das stellen wir in die Lobby. Nicht weil du es verdient hast, sondern weil es gut aussieht.',
+  collectFull: 'Komplett! Die Lobby-Vitrine ist gefüllt. Die Gäste machen Fotos. Von der Vitrine, nicht von dir.',
+  collectAll: 'Die ganze Sammlung! Das Resort hat jetzt ein Museum. Eintritt: drei Münzen. Für dich vier.',
   life: 'Moment, war das gerade ein Hase? Auf meinem Ferienplaneten? Na gut, der darf bleiben. Die Urlauber mögen so was.',
   cheat: 'Cheats?! Ich hab nichts gesehen. Und du auch nicht.',
   friend: 'Du hast Freunde mitgebracht? Prima. Die bezahle ich aber nicht.',
@@ -2955,6 +3024,9 @@ const ACH = [
   { id: 'combo5', ic: '☄️', n: 'Putz-Ekstase', d: 'Erreiche eine Combo von ×5', v: () => G.st.combo || 1, max: 5, r: 2000 },
   { id: 'allbought', ic: '🛍️', n: 'Komplett ausgestattet', d: 'Kaufe alles, was der Shop hergibt', v: () => (shopAllBought() ? 1 : 0), max: 1, r: 0 },
   { id: 'life', ic: '🐇', n: 'Frühlingserwachen', d: '100 Tiere sind auf den Planeten zurückgekehrt', v: () => G.st.animals || 0, max: 100, r: 500 },
+  { id: 'coll1', ic: '✨', n: 'Schatzsucher', d: 'Finde dein erstes Fundstück', v: () => G.coll.reduce((a, v) => a + v, 0), max: 1, r: 100 },
+  { id: 'coll50', ic: '🔍', n: 'Spürnase', d: 'Finde 50 Fundstücke', v: () => G.coll.reduce((a, v) => a + v, 0), max: 50, r: 500 },
+  { id: 'collAll', ic: '🏆', n: 'Museumsdirektor', d: 'Vervollständige die ganze Sammlung', v: () => collTotalDone(), max: 10, r: 0 },
   { id: 'basket', ic: '🧺', n: 'Bodenlos', d: 'Kaufe den Bodenlosen Korb', v: () => (G.upg.cap >= CAP.length - 1 ? 1 : 0), max: 1, r: 0 },
   { id: 'friends', ic: '🤝', n: 'Geteiltes Leid', d: 'Putze zusammen mit Freunden', v: () => G.st.friends, max: 1, r: 100 },
 ];
@@ -3283,6 +3355,7 @@ function vehCollect(dt) {
   for (const [id, L] of G.loose) tryTake(id, L[0], L[1], L[2]);
   if (full && !VEH.fullMsg) { VEH.fullMsg = true; toast(`Tank voll (${VCAP} Einheiten) – ab zum Schredder!`, 'bad'); sfx('full'); }
   if (!full) VEH.fullMsg = false;
+  collectAround(front, rad, 'kehrmaxx');
   if (!got.length) return;
   const hop = VEH.p.clone().addScaledVector(n, 2.4).addScaledVector(VEH.f, -0.85);
   got.forEach((id, k) => {
@@ -3732,11 +3805,16 @@ function buildResort(st) {
   add(Bx(st.w, depth, st.d), sand, ['t', 0, -depth / 2, 0]);
   add(Bx(st.w - 0.4, 0.06, st.d - 0.4), tile, ['t', 0, 0.03, 0]);
   // Hauptgebäude
-  add(Bx(14, 9, 6), coral, ['t', -2, 4.5, -4.8]);
+  add(Bx(14, 6, 6), coral, ['t', -2, 6, -4.8]);                       // Obergeschosse
+  add(Bx(14, 3, 0.4), coral, ['t', -2, 1.5, -7.6]);                   // Erdgeschoss: Wände mit Türöffnung
+  add(Bx(0.4, 3, 6), coral, ['t', -8.8, 1.5, -4.8]); add(Bx(0.4, 3, 6), coral, ['t', 4.8, 1.5, -4.8]);
+  add(Bx(5.8, 3, 0.4), coral, ['t', -6.1, 1.5, -2.0]); add(Bx(5.8, 3, 0.4), coral, ['t', 2.1, 1.5, -2.0]);
+  add(Bx(2.6, 0.45, 0.44), cream, ['t', -2, 2.78, -2.0]);
+  for (const sx of [-3.3, -0.7]) add(Bx(0.22, 2.6, 0.5), cream, ['t', sx, 1.3, -2.0]);
   for (const y of [3, 6]) add(Bx(14.15, 0.25, 6.15), cream, ['t', -2, y, -4.8]);
   add(Bx(14.7, 0.45, 6.7), white, ['t', -2, 9.2, -4.8]);
   add(Bx(3.4, 0.18, 1.8), blue, ['t', -2, 2.85, -1.05]);
-  add(Bx(2.2, 2.5, 0.1), glass, ['t', -2, 1.25, -1.75]);
+
   const windows = [];
   for (let fl = 0; fl < 3; fl++) for (let k = 0; k < 7; k++) {
     const x = -2 - 6 + k * 2; if (fl === 0 && Math.abs(x + 2) < 1.5) continue;
@@ -3784,6 +3862,7 @@ function buildResort(st) {
   add(Bx(3.6, 1.9, 0.1), wood, ['t', 0, 2.2, 8.58]); add(new THREE.PlaneGeometry(3.4, 1.7), boardM, ['t', 0, 2.2, 8.64]);
   const lit = flatPatch(new THREE.MeshBasicMaterial({ color: 0xffe08a }));
   const o = sObj(st); setObjMatrix(g, o.p, o.n, o.f, 1); scene.add(g);
+  const lobby = addLobby(g, st);
   const label = makeLabel('RESORT', '#ff9a8b', 3);
   // Gäste: liegen, schwimmen, spazieren
   const guests = [], gs = (W.seed >>> 0) % 100000;
@@ -3795,7 +3874,7 @@ function buildResort(st) {
     else g.add(c.g);
     guests.push({ c, kind, idx: kind === 'swim' ? si++ : kind === 'walk' ? wi++ : li - 1, ph: i * 1.7 });
   });
-  return { st, o, group: g, windows, glass, lit, water, poolFloor, umbrellas, flag, boardT, label, pct: -1, guests };
+  return { st, o, group: g, windows, glass, lit, water, poolFloor, umbrellas, flag, boardT, label, pct: -1, guests, lobby };
 }
 function drawResortBoard(t, pct) {
   redrawSign(t, (c, w, h) => {
@@ -3930,7 +4009,7 @@ function syncStructs() {
   for (const k of ['resort', 'shop']) if (STR[k]) { scene.remove(STR[k].group); scene.remove(STR[k].label); if (STR[k].guests) STR[k].guests.forEach((q) => q.c.dispose()); STR[k] = null; }
   for (const st of W.structs) { if (st.kind === 'resort') STR.resort = buildResort(st); else if (st.kind === 'shop') STR.shop = buildShop(st); }
 }
-function updateStructs(dt) { syncStructs(); updateResort(dt); updateShopModel(dt); if (G.running) updateShopZone(dt); }
+function updateStructs(dt) { syncStructs(); updateResort(dt); updateLobby(dt); updateShopModel(dt); if (G.running) updateShopZone(dt); }
 
 
 // =====================================================================
@@ -3938,7 +4017,11 @@ function updateStructs(dt) { syncStructs(); updateResort(dt); updateShopModel(dt
 // =====================================================================
 const CHAR_MAT = flatPatch(new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.62, metalness: 0 }));
 // weiche, indizierte Teile (glatte Normalen statt Flat-Shading)
-function S(geo, color, ...list) { ops(geo, list); geo.deleteAttribute('uv'); return setColor(geo, color); }
+function S(geo, color, ...list) {
+  ops(geo, list); geo.deleteAttribute('uv');
+  if (!geo.index) { const n = geo.attributes.position.count, a = n > 65535 ? new Uint32Array(n) : new Uint16Array(n); for (let i = 0; i < n; i++) a[i] = i; geo.setIndex(new THREE.BufferAttribute(a, 1)); }
+  return setColor(geo, color);
+}
 const SKINS = [0xf6d3bd, 0xeec09d, 0xd99e76, 0xb87b55, 0x8a5636, 0x5e3a24];
 const HAIRC = [0x2a1c14, 0x5b3a26, 0x9c6435, 0xe6c46e, 0xa8a8a8, 0x1b1b1b, 0xe07ab0, 0xc0502a];
 function bandColor(g, c1, c2, y0, step) { const p = g.attributes.position, c = g.attributes.color, a = new THREE.Color(c1), b = new THREE.Color(c2); for (let i = 0; i < p.count; i++) { const k = Math.floor((p.getY(i) - y0) / step) & 1; const col = k ? b : a; c.setXYZ(i, col.r, col.g, col.b); } return g; }
@@ -4106,6 +4189,185 @@ function bindCharPicker(box, onPick) {
 function openCharPanel() {
   showPanel('char', 'Deine Figur', `<div class="small" style="margin-bottom:8px">So sehen dich deine Freunde im Multiplayer.</div><div id="charGrid" class="charPick grid"></div>`);
   bindCharPicker($('#charGrid'), (i) => { if (NET.mode === 'guest') netSend({ t: 'char', c: i }); else if (NET.mode === 'host') netBroadcast({ t: 'pl', list: rosterList() }); toast(`Du bist jetzt ${CHAR_PRESETS[i].name}`, 'good'); });
+}
+
+
+// =====================================================================
+//  PUTZPLANET – Teil 10: Fundstücke & Sammlung in der Resort-Lobby
+// =====================================================================
+const GOLD = 0xf7c948, GOLD2 = 0xd79a1f, SILVER = 0xd7dde3, DARKM = 0x2b2f33;
+const Oct = (r) => new THREE.OctahedronGeometry(r, 0);
+const Tet = (r) => new THREE.TetrahedronGeometry(r, 0);
+function puzzleGeo(size, col) {
+  const t = size * 0.5, parts = [S(Bx(size, size * 0.22, size), col)];
+  parts.push(S(Sp(size * 0.21, 10, 8), col, ['s', 1, 0.52, 1], ['t', t, 0, 0]));
+  parts.push(S(Sp(size * 0.21, 10, 8), col, ['s', 1, 0.52, 1], ['t', 0, 0, -t]));
+  return M(parts);
+}
+function statueGeo(sc) {
+  const st = 0xd8d2c0, b = 0xb9b2a0, P_ = [];
+  P_.push(S(Cy(0.3 * sc, 0.34 * sc, 0.1 * sc, 10), b, ['t', 0, 0.05 * sc, 0]));
+  P_.push(S(Cy(0.17 * sc, 0.2 * sc, 0.5 * sc, 10), st, ['t', 0, 0.35 * sc, 0]));
+  P_.push(S(Sp(0.19 * sc, 14, 12), st, ['s', 1, 1.15, 1], ['t', 0, 0.72 * sc, 0]));
+  P_.push(S(Sp(0.11 * sc, 12, 10), st, ['s', 0.9, 1.05, 0.95], ['t', 0, 0.99 * sc, 0]));
+  P_.push(S(new THREE.CapsuleGeometry(0.05 * sc, 0.3 * sc, 4, 8), st, ['rz', 0.5], ['t', -0.2 * sc, 0.74 * sc, 0]));
+  P_.push(S(new THREE.CapsuleGeometry(0.05 * sc, 0.3 * sc, 4, 8), st, ['rz', -1.3], ['t', 0.22 * sc, 0.86 * sc, 0]));
+  return M(P_);
+}
+// id, Name, Teile, kleines Fundstück, großes Ausstellungsstück
+const COLL = [
+  { id: 'watch', n: 'Armbanduhr', parts: 1, col: 0xffe9a8, piece: () => M([S(new THREE.TorusGeometry(0.07, 0.016, 8, 18), DARKM, ['rx', Math.PI / 2]), S(Cy(0.045, 0.045, 0.018, 14), SILVER, ['t', 0, 0.035, 0]), S(Cy(0.036, 0.036, 0.008, 14), 0x2a5caa, ['t', 0, 0.046, 0]), S(Bx(0.006, 0.026, 0.004), 0xffffff, ['t', 0, 0.051, 0.008])]), reward: () => M([S(new THREE.TorusGeometry(0.3, 0.07, 10, 22), DARKM, ['rx', Math.PI / 2], ['t', 0, 0.3, 0]), S(Cy(0.2, 0.2, 0.08, 18), SILVER, ['t', 0, 0.45, 0]), S(Cy(0.16, 0.16, 0.03, 18), 0x2a5caa, ['t', 0, 0.5, 0]), S(Bx(0.025, 0.11, 0.015), 0xffffff, ['t', 0, 0.52, 0.03]), S(Bx(0.08, 0.02, 0.015), GOLD, ['t', 0.02, 0.52, -0.02])]) },
+  { id: 'gem', n: 'Diamant', parts: 1, col: 0xa8e6ff, piece: () => M([S(Oct(0.075), 0x9fe4ff, ['s', 1, 1.5, 1])]), reward: () => M([S(Cy(0.26, 0.3, 0.06, 12), GOLD2, ['t', 0, 0.03, 0]), S(Oct(0.3), 0x9fe4ff, ['s', 1, 1.6, 1], ['t', 0, 0.55, 0])]) },
+  { id: 'pin', n: 'Stecknadel', parts: 1, col: 0xff6b9d, piece: () => M([S(Cy(0.006, 0.002, 0.16, 6), SILVER, ['rz', 0.5], ['t', 0, 0.03, 0]), S(Sp(0.022, 10, 8), 0xe8457a, ['t', -0.038, 0.072, 0])]), reward: () => M([S(Cy(0.03, 0.01, 0.9, 10), SILVER, ['t', 0, 0.45, 0]), S(Sp(0.12, 14, 12), 0xe8457a, ['t', 0, 0.95, 0]), S(Cy(0.2, 0.22, 0.05, 14), 0xf4f4f4, ['t', 0, 0.025, 0])]) },
+  { id: 'purse', n: 'Geldbörse', parts: 1, col: 0xa9622f, piece: () => M([S(Bx(0.13, 0.085, 0.045), 0x8a4f26), S(Bx(0.134, 0.035, 0.05), 0xa9622f, ['t', 0, 0.028, 0]), S(Cy(0.012, 0.012, 0.012, 10), GOLD, ['rx', Math.PI / 2], ['t', 0, 0.008, 0.026])]), reward: () => M([S(Bx(0.62, 0.42, 0.22), 0x8a4f26, ['t', 0, 0.26, 0]), S(Bx(0.64, 0.16, 0.24), 0xa9622f, ['t', 0, 0.4, 0]), S(Cy(0.055, 0.055, 0.05, 12), GOLD, ['rx', Math.PI / 2], ['t', 0, 0.3, 0.12]), S(Bx(0.3, 0.19, 0.01), 0xe8e2d2, ['rz', 0.2], ['t', 0.12, 0.52, 0.05])]) },
+  { id: 'duck', n: 'Goldene Gummiente', parts: 1, col: GOLD, piece: () => M([S(Sp(0.062, 12, 10), GOLD, ['s', 1.25, 0.9, 1]), S(Sp(0.04, 10, 8), GOLD, ['t', 0.05, 0.062, 0]), S(new THREE.ConeGeometry(0.018, 0.04, 6), 0xe8913a, ['rz', -Math.PI / 2], ['t', 0.093, 0.058, 0]), S(Sp(0.008, 6, 5), DARKM, ['t', 0.062, 0.082, 0.025]), S(Sp(0.008, 6, 5), DARKM, ['t', 0.062, 0.082, -0.025])]), reward: () => M([S(Sp(0.3, 16, 14), GOLD, ['s', 1.25, 0.9, 1], ['t', 0, 0.3, 0]), S(Sp(0.19, 14, 12), GOLD, ['t', 0.24, 0.6, 0]), S(new THREE.ConeGeometry(0.085, 0.2, 8), 0xe8913a, ['rz', -Math.PI / 2], ['t', 0.45, 0.58, 0]), S(Sp(0.035, 8, 6), DARKM, ['t', 0.3, 0.68, 0.12]), S(Sp(0.035, 8, 6), DARKM, ['t', 0.3, 0.68, -0.12])]) },
+  { id: 'puzzle', n: 'Puzzleteil', parts: 100, rn: 'Puzzle „Blühonia“', col: 0x6ec1ff, piece: () => puzzleGeo(0.1, 0x4aa3e8), reward: () => M([S(Bx(1.15, 0.78, 0.07), 0x8a5a2b, ['t', 0, 0.39, 0]), S(Bx(1.0, 0.64, 0.03), 0x6cbf4a, ['t', 0, 0.39, 0.04]), S(Sp(0.1, 12, 10), 0x3aa0d8, ['s', 1.6, 1, 0.2], ['t', -0.22, 0.3, 0.06]), S(Sp(0.1, 12, 10), 0x3aa0d8, ['s', 1.2, 0.8, 0.2], ['t', 0.3, 0.52, 0.06]), S(Cy(0.035, 0.035, 0.03, 10), 0xffd23f, ['rx', Math.PI / 2], ['t', 0.3, 0.62, 0.06]), S(Bx(0.26, 0.26, 0.04), 0x89cf62, ['t', 0.12, 0.2, 0.065])]) },
+  { id: 'relic', n: 'Artefaktscherbe', parts: 100, rn: 'Antike Statue', col: 0xe8d9a8, piece: () => M([S(new THREE.ConeGeometry(0.07, 0.1, 5), 0xd8c89a, ['rx', 1.9], ['s', 1, 1, 0.45])]), reward: () => statueGeo(1.0) },
+  { id: 'bone', n: 'Dino-Knochen', parts: 12, rn: 'Dino-Skelett', col: 0xf2efe2, piece: () => M([S(Cy(0.022, 0.022, 0.14, 8), 0xf2efe2, ['rz', Math.PI / 2]), S(Sp(0.038, 10, 8), 0xf2efe2, ['t', 0.08, 0, 0]), S(Sp(0.038, 10, 8), 0xf2efe2, ['t', -0.08, 0, 0])]), reward: () => { const C = 0xf2efe2, P_ = [S(Cy(0.28, 0.33, 0.07, 12), 0x8a7f6a, ['t', 0, 0.035, 0])]; for (let k = 0; k < 9; k++) { const t = k / 8, x = -0.42 + t * 0.95, y = 0.52 + Math.sin(t * 3.1) * 0.16; P_.push(S(Sp(0.055 - t * 0.02, 10, 8), C, ['t', x, y, 0])); if (k > 1 && k < 7) { P_.push(S(new THREE.TorusGeometry(0.1, 0.014, 6, 14, Math.PI), C, ['rz', Math.PI], ['rx', 0.1], ['t', x, y - 0.02, 0])); } } P_.push(S(Sp(0.1, 12, 10), C, ['s', 1.5, 0.9, 0.85], ['t', -0.58, 0.62, 0])); P_.push(S(new THREE.ConeGeometry(0.06, 0.16, 7), C, ['rz', 1.9], ['t', -0.72, 0.55, 0])); for (const sx of [-0.3, 0.3]) P_.push(S(Cy(0.03, 0.03, 0.42, 8), C, ['t', sx, 0.26, 0])); return M(P_); } },
+  { id: 'disc', n: 'Schallplatte', parts: 8, rn: 'Jukebox', col: 0x3a3a3a, piece: () => M([S(Cy(0.085, 0.085, 0.008, 18), 0x24262b), S(Cy(0.03, 0.03, 0.011, 14), 0xe05a2b), S(Cy(0.006, 0.006, 0.014, 8), 0xf4f4f4)]), reward: () => M([S(Bx(0.72, 1.0, 0.45), 0xb6342f, ['t', 0, 0.5, 0]), S(new THREE.CylinderGeometry(0.36, 0.36, 0.45, 18, 1, false, 0, Math.PI), 0xb6342f, ['rx', Math.PI / 2], ['t', 0, 1.0, 0]), S(new THREE.CylinderGeometry(0.3, 0.3, 0.47, 18, 1, false, 0, Math.PI), 0xffd23f, ['rx', Math.PI / 2], ['t', 0, 1.0, 0.01]), S(Bx(0.5, 0.3, 0.03), 0x1b2a33, ['t', 0, 0.78, 0.23]), S(Cy(0.17, 0.17, 0.02, 18), 0x24262b, ['rx', Math.PI / 2], ['t', 0, 0.78, 0.25]), S(Bx(0.56, 0.1, 0.04), 0xf4f4f4, ['t', 0, 0.42, 0.23]), S(Cy(0.04, 0.04, 0.06, 10), SILVER, ['rx', Math.PI / 2], ['t', -0.2, 0.26, 0.24]), S(Cy(0.04, 0.04, 0.06, 10), SILVER, ['rx', Math.PI / 2], ['t', 0.2, 0.26, 0.24])]) },
+  { id: 'star', n: 'Sternensplitter', parts: 30, rn: 'Sternenkugel', col: 0xfff0a8, piece: () => M([S(Tet(0.065), 0xfff0a8, ['s', 1, 1.3, 1])]), reward: () => M([S(Cy(0.24, 0.3, 0.1, 14), 0x3a2f6b, ['t', 0, 0.05, 0]), S(Sp(0.3, 20, 16), 0xfff0a8, ['t', 0, 0.48, 0]), S(new THREE.TorusGeometry(0.42, 0.025, 8, 26), 0xc77dff, ['rx', 1.2], ['t', 0, 0.48, 0]), S(new THREE.TorusGeometry(0.46, 0.02, 8, 26), 0x7ff0d0, ['rx', -0.6], ['rz', 0.5], ['t', 0, 0.48, 0])]) },
+];
+const COLL_N = COLL.reduce((a, c) => a + c.parts, 0);
+const COLL_START = []; { let a = 0; for (const c of COLL) { COLL_START.push(a); a += c.parts; } }
+const collName = (d) => d.rn || d.n;
+G.coll = new Uint8Array(COLL_N); G.collCount = new Uint16Array(COLL.length);
+function collRecount() { G.collCount = new Uint16Array(COLL.length); for (let i = 0; i < COLL_N; i++) if (G.coll[i]) G.collCount[W.cType ? W.cType[i] : collTypeOf(i)]++; }
+function collTypeOf(i) { for (let t = COLL.length - 1; t >= 0; t--) if (i >= COLL_START[t]) return t; return 0; }
+const collDone = (t) => G.collCount[t] >= COLL[t].parts;
+const collTotalDone = () => COLL.reduce((a, c, t) => a + (collDone(t) ? 1 : 0), 0);
+
+// ---------------- Darstellung in der Welt ----------------
+const CO = { ig: [], halo: null, near: [], t: 0, dirty: true };
+function initCollectibles() {
+  CO.ig = COLL.map((d) => new IG([{ geo: d.piece(), mat: CHAR_MAT }], 24));
+  CO.halo = new IG([{ geo: Sp(0.17, 10, 8), mat: flatPatch(new THREE.MeshBasicMaterial({ color: 0xfff3b0, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending, fog: false })) }], 24);
+  for (const m of CO.halo.meshes) m.renderOrder = 4;
+}
+const _co = new THREE.Vector3();
+function rebuildCollectibles() {
+  if (!CO.ig.length || !W.cPos) return;
+  for (const g of CO.ig) g.begin(); CO.halo.begin(); CO.near.length = 0;
+  const up = PL.up, t = performance.now() / 1000;
+  for (const c of cellsWithin(up.x, up.y, up.z, 42, _ccells)) {
+    const list = W.cByCell.get(c); if (!list) continue;
+    for (const i of list) {
+      if (G.coll[i]) continue;
+      const x = W.cPos[i * 3], y = W.cPos[i * 3 + 1], z = W.cPos[i * 3 + 2];
+      const dx = x - PL.pos.x, dy = y - PL.pos.y, dz = z - PL.pos.z, d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > 42 * 42) continue;
+      CO.near.push(i);
+      const n = _co.set(x, y, z).normalize(), lift = 0.26 + Math.sin(t * 1.6 + i) * 0.05;
+      const p = _v2.set(x, y, z).addScaledVector(n, lift);
+      const f = tangentOf(n); f.applyAxisAngle(n, t * 0.9 + i);
+      CO.ig[W.cType[i]].addNF(p, n, f, 1);
+      CO.halo.addNF(p, n, f, 1 + Math.sin(t * 3 + i) * 0.12);
+    }
+  }
+  for (const g of CO.ig) g.end(); CO.halo.end();
+}
+const _ccells = [];
+// ---------------- Einsammeln ----------------
+function collectPiece(i, byName) {
+  if (G.coll[i]) return false;
+  if (NET.mode === 'guest') { G.coll[i] = 1; netSend({ t: 'cget', i }); } else { G.coll[i] = 1; if (NET.mode === 'host') netBroadcast({ t: 'cgot', i, by: byName || null }); }
+  const t = W.cType ? W.cType[i] : collTypeOf(i); G.collCount[t]++;
+  const d = COLL[t], have = G.collCount[t];
+  const p = _v3.set(W.cPos[i * 3], W.cPos[i * 3 + 1], W.cPos[i * 3 + 2]);
+  if (p.distanceTo(PL.pos) < 60) { spawnBurst(p, 16, new THREE.Color(d.col), 2.4, 0, 3); VIEW.shake = Math.max(VIEW.shake, 0.12); }
+  sfx('find'); CO.dirty = true;
+  if (d.parts === 1) { collToast(`${d.n} gefunden! 🏆`, `Steht jetzt in der Resort-Lobby`); radio('collect'); }
+  else if (have >= d.parts) { collToast(`${d.n}: ${have}/${d.parts} – komplett! 🎉`, `In der Lobby wartet eine Überraschung`); radio('collectFull'); sfx('ach'); }
+  else { collToast(`${d.n} gefunden`, `${have}/${d.parts} · Lobby`); if (have === 1) radio('collect'); }
+  STR.lobbyDirty = true; achTick(false);
+  if (collTotalDone() === COLL.length) radio('collectAll');
+  return true;
+}
+function collToast(a, b) { const t = document.createElement('div'); t.className = 'toast find'; t.innerHTML = `<b>${a}</b><span>${b}</span>`; const box = $('#toasts'); box.appendChild(t); while (box.children.length > 3) box.firstChild.remove(); setTimeout(() => t.remove(), 3200); }
+// alle nicht gefundenen Fundstücke im Umkreis einer Position
+function collInRange(p, rad, out) {
+  out.length = 0; if (!W.cPos) return out;
+  const n = _co.copy(p).normalize();
+  for (const c of cellsWithin(n.x, n.y, n.z, rad + 1, _ccells2)) {
+    const list = W.cByCell.get(c); if (!list) continue;
+    for (const i of list) { if (G.coll[i]) continue; const dx = W.cPos[i * 3] - p.x, dy = W.cPos[i * 3 + 1] - p.y, dz = W.cPos[i * 3 + 2] - p.z; if (dx * dx + dy * dy + dz * dz < rad * rad) out.push(i); }
+  }
+  return out;
+}
+const _ccells2 = [], _cfound = [];
+function collectAround(p, rad, byName) { for (const i of collInRange(p, rad, _cfound)) collectPiece(i, byName); }
+
+// ---------------- Lobby ----------------
+const PAD_X = [-7.4, -4.6, -1.8, 1.0, 3.8];
+function addLobby(g, st) {
+  const add = adder(g), wall = lamb(0xf6ecd6), floor = lamb(0xd9c7a8), trim = lamb(0xff9a8b), pad = lamb(0xe8e2d2), padTop = lamb(0xb9b2a0);
+  add(Bx(13.2, 0.07, 5.2), floor, ['t', -2, 0.035, -4.8]);
+  for (let k = 0; k < 5; k++) add(Bx(2.4, 0.02, 5.0), k % 2 ? lamb(0xe6d8bd) : floor, ['t', -8 + k * 2.7, 0.08, -4.8]);
+  add(Bx(13.2, 0.1, 5.2), wall, ['t', -2, 2.95, -4.8]);
+  // Innenwände hell
+  add(Bx(13.2, 3, 0.06), wall, ['t', -2, 1.5, -7.37]);
+  add(Bx(0.06, 3, 5.2), wall, ['t', -8.57, 1.5, -4.8]); add(Bx(0.06, 3, 5.2), wall, ['t', 4.57, 1.5, -4.8]);
+  add(Bx(5.8, 3, 0.06), wall, ['t', -6.1, 1.5, -2.23]); add(Bx(5.8, 3, 0.06), wall, ['t', 2.1, 1.5, -2.23]);
+  add(Bx(2.6, 0.26, 0.5), trim, ['t', -2, 2.86, -2.0]);
+  // Deckenlampen
+  for (const x of [-6, -2, 2]) { add(Cy(0.03, 0.03, 0.25, 6), lamb(0x8a8a8a), ['t', x, 2.76, -4.8]); add(Sp(0.17, 12, 10), flatPatch(new THREE.MeshBasicMaterial({ color: 0xfff1c8 })), ['t', x, 2.58, -4.8]); }
+  // Schild über der Tür (innen)
+  const hdT = signTex(512, 128, (c, w, h) => { c.fillStyle = '#14202b'; rr(c, 4, 4, w - 8, h - 8, 24); c.fill(); c.fillStyle = '#ffd23f'; c.font = '400 62px "Lilita One", Nunito, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('SAMMLUNG', w / 2, h / 2 + 4); });
+  add(new THREE.PlaneGeometry(2.6, 0.65), flatPatch(new THREE.MeshBasicMaterial({ map: hdT, transparent: true })), ['rx', 0], ['t', -2, 2.3, -7.33]);
+  // Podeste
+  const pads = [];
+  COLL.forEach((d, i) => {
+    const row = i < 5 ? 0 : 1, x = PAD_X[i % 5], z = row ? -3.5 : -6.5;
+    const grp = new THREE.Group(); grp.position.set(x, 0.09, z); grp.rotation.y = row ? Math.PI : 0; g.add(grp); const a2 = adder(grp);
+    a2(Bx(0.82, 0.78, 0.82), pad, ['t', 0, 0.39, 0]); a2(Bx(0.92, 0.07, 0.92), padTop, ['t', 0, 0.8, 0]); a2(Bx(0.92, 0.07, 0.92), padTop, ['t', 0, 0.04, 0]);
+    const signT = signTex(384, 150, () => { });
+    a2(new THREE.PlaneGeometry(0.8, 0.31), flatPatch(new THREE.MeshBasicMaterial({ map: signT, transparent: true })), ['rx', -0.35], ['t', 0, 0.52, 0.44]);
+    const holder = new THREE.Group(); holder.position.set(0, 0.84, 0); grp.add(holder);
+    const reward = new THREE.Mesh(d.reward(), CHAR_MAT); reward.frustumCulled = false; holder.add(reward);
+    const bb = new THREE.Box3().setFromObject(reward), hgt = bb.max.y - bb.min.y, k = Math.min(1, 1.15 / Math.max(0.3, hgt));
+    reward.scale.setScalar(k);
+    const silo = new THREE.Mesh(d.parts === 1 ? d.reward() : M([S(Bx(0.5, 0.5, 0.5), 0x6b7078, ['t', 0, 0.26, 0]), S(Cy(0.07, 0.07, 0.16, 10), 0x8e949c, ['t', 0, 0.6, 0]), S(Sp(0.12, 12, 10), 0x8e949c, ['t', 0, 0.74, 0])]), lamb(0x5b6168, { transparent: true, opacity: 0.55 }));
+    silo.frustumCulled = false; silo.scale.setScalar(d.parts === 1 ? k : 1); holder.add(silo);
+    pads.push({ d, i, grp, holder, reward, silo, signT, shown: -2 });
+  });
+  return { pads };
+}
+function drawPadSign(p) {
+  const d = p.d, have = G.collCount[p.i], done = have >= d.parts;
+  redrawSign(p.signT, (c, w, h) => {
+    c.fillStyle = done ? '#1f5f3a' : '#1c2a36'; rr(c, 3, 3, w - 6, h - 6, 18); c.fill();
+    c.lineWidth = 5; c.strokeStyle = done ? '#7bd389' : '#55606e'; c.stroke();
+    c.textAlign = 'center'; c.textBaseline = 'middle';
+    const title = d.parts === 1 ? (done ? d.n : '???') : (done ? d.rn : '???');
+    c.fillStyle = done ? '#ffffff' : '#9aa3ab'; c.font = '900 38px Nunito, sans-serif'; c.fillText(title, w / 2, 48);
+    if (d.parts > 1) {
+      c.fillStyle = done ? '#bff0cd' : '#cfd8e2'; c.font = '900 30px Nunito, sans-serif'; c.fillText(`${d.n}: ${have}/${d.parts}`, w / 2, 100);
+      const bw = w - 90; c.fillStyle = 'rgba(255,255,255,.18)'; rr(c, 45, 118, bw, 14, 7); c.fill();
+      c.fillStyle = done ? '#7bd389' : '#ffd23f'; rr(c, 45, 118, Math.max(6, bw * have / d.parts), 14, 7); c.fill();
+    } else { c.fillStyle = done ? '#bff0cd' : '#9aa3ab'; c.font = '800 28px Nunito, sans-serif'; c.fillText(done ? 'gefunden' : 'noch nicht gefunden', w / 2, 102); }
+  });
+}
+function updateLobby(dt) {
+  const R0 = STR.resort; if (!R0 || !R0.lobby) return;
+  const t = performance.now() / 1000;
+  for (const p of R0.lobby.pads) {
+    const have = G.collCount[p.i], done = have >= p.d.parts;
+    if (p.shown !== have || STR.lobbyDirty) { p.shown = have; drawPadSign(p); p.reward.visible = done; p.silo.visible = !done; }
+    p.holder.rotation.y = t * 0.5 + p.i;
+    if (done) p.holder.position.y = 0.84 + Math.sin(t * 1.4 + p.i) * 0.03;
+  }
+  STR.lobbyDirty = false;
+}
+// ---------------- Sammlung im Menü ----------------
+function openCollection() {
+  const rows = COLL.map((d, t) => {
+    const have = G.collCount[t], done = have >= d.parts;
+    const title = done ? collName(d) : (d.parts === 1 ? '???' : '???');
+    const sub = d.parts === 1 ? (done ? 'gefunden' : 'noch nicht gefunden') : `${d.n}: ${fmt(have)}/${fmt(d.parts)}`;
+    const bar = d.parts > 1 ? `<div class="bar"><i style="width:${have / d.parts * 100}%"></i></div>` : '';
+    return `<div class="achRow ${done ? 'got' : ''}"><div class="medal">${done ? '🏆' : '❔'}</div><div class="tx"><div class="nm">${title}</div><div class="ds">${sub}</div>${bar}</div></div>`;
+  }).join('');
+  showPanel('coll', 'Sammlung', `<div class="small" style="margin-bottom:8px">Fundstücke liegen überall auf Blühonia herum – sie zählen nicht zu den 100.000 Müllteilen und bringen kein Geld. Ausgestellt werden sie in der Lobby des Resorts.</div>${rows}`);
+  $('#panelExtra').innerHTML = `🏆 ${collTotalDone()}/${COLL.length}`;
 }
 
 boot();
