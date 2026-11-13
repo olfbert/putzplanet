@@ -4641,7 +4641,7 @@ function updateLobby(dt) {
 const collLeft = (t) => { const L = []; for (let i = 0; i < COLL_N; i++) if (!G.coll[i] && W.cType[i] === t) L.push(i); return L; };
 const collMarked = (t) => { const d = COLL[t], left = d.parts - G.collCount[t]; return left > 0 && ((d.parts > 1 && left <= 5) || G.shredded / TOTAL >= 0.95); };
 function collGoto(t) {
-  let best = -1, bd = 1e9; for (const i of collLeft(t)) { const d = PL.pos.distanceToSquared(_v1.set(W.cPos[i * 3], W.cPos[i * 3 + 1], W.cPos[i * 3 + 2])); if (d < bd) { bd = d; best = i; } }
+  let best = -1, bd = 1e9; for (const i of (t < 0 ? COLL.flatMap((_, k) => (collMarked(k) ? collLeft(k) : [])) : collLeft(t))) { const d = PL.pos.distanceToSquared(_v1.set(W.cPos[i * 3], W.cPos[i * 3 + 1], W.cPos[i * 3 + 2])); if (d < bd) { bd = d; best = i; } }
   if (best < 0) return; MAP.wp = new THREE.Vector3(W.cPos[best * 3], W.cPos[best * 3 + 1], W.cPos[best * 3 + 2]); closePanel();
   toast(`📍 Nächstes Fundstück: ${fmt(Math.sqrt(bd))} m – folge dem Kompass`, 'good');
 }
@@ -4654,7 +4654,9 @@ function openCollection() {
     const go = !done && collMarked(t) ? `<button class="btn sec" data-cgo="${t}" style="padding:6px 10px;font-size:13px;margin-left:6px">📍 Zeigen</button>` : '';
     return `<div class="achRow ${done ? 'got' : ''}"><div class="medal">${done ? '🏆' : '❔'}</div><div class="tx"><div class="nm">${title}</div><div class="ds">${sub}${collMarked(t) && !done ? ' · auf der Karte markiert' : ''}</div>${bar}</div>${go}</div>`;
   }).join('');
-  showPanel('coll', 'Sammlung', `<div class="small" style="margin-bottom:8px">Fundstücke liegen überall auf Blühonia herum – sie zählen nicht zu den 100.000 Müllteilen und bringen kein Geld. Ausgestellt werden sie in der Lobby des Resorts.</div>${rows}`);
+  const nMark = COLL.reduce((n, d, k) => n + (collMarked(k) ? d.parts - G.collCount[k] : 0), 0);
+  const top = nMark ? `<button class="btn grn" data-cgo="-1" style="width:100%;margin-bottom:10px">📍 Nächstes Fundstück zeigen (${nMark} auf der Karte markiert)</button>` : '';
+  showPanel('coll', 'Sammlung', `${top}<div class="small" style="margin-bottom:8px">Fundstücke liegen überall auf Blühonia herum – sie zählen nicht zu den 100.000 Müllteilen und bringen kein Geld. Ausgestellt werden sie in der Lobby des Resorts. Fehlen von einer Serie nur noch 5 Teile, werden sie markiert.</div>${rows}`);
   $('#panelExtra').innerHTML = `🏆 ${collTotalDone()}/${COLL.length}`;
   for (const b of document.querySelectorAll('[data-cgo]')) b.onclick = () => collGoto(+b.dataset.cgo);
 }
