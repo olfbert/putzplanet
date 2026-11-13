@@ -10,10 +10,12 @@ First-Person-Aufräumspiel fürs Handy. Am ersten Tag als Praktikant bei der Mü
 - Aufheben, Fegen, Werfen; Schreddi 3000 zahlt pro Teil Münzen
 - Shop: Behälter, Besen, Schuhe, Greifweite, Turbo, Roombas (mit Motor-, Tank- und Funk-Upgrades), Mini-Schredder
 - Roombas lassen sich aufheben und woanders absetzen; ist ihr Gebiet leer, ziehen sie selbst zum nächsten Schredder mit Arbeit
+- Bodenloser Korb als letzte Behälter-Stufe (fasst unendlich, 150.000 Münzen)
+- Cheats im Menü: +5.000 Münzen, Supermagnet (saugt ein Viertel des Planeten leer)
 - Putz-Combo: schnell hintereinander aufräumen erhöht den Multiplikator bis ×5
 - Kehrmaschine „Kehrmaxx“ zum Reinsetzen (Third-Person), mit Bordschredder und Motor-Upgrades
 - Roombas sehen je nach Upgrade anders aus (5 Modelle, wachsen mit dem Tank)
-- 36 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
+- 37 Erfolge, Spielzeit-Timer, Funksprüche vom Chef
 - 3 Speicherstände im Browser, Export/Import als Code
 - Multiplayer: Menü → „Freunde einladen“, Code oder Link teilen (PeerJS/WebRTC, der Host speichert)
 

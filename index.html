@@ -256,6 +256,9 @@ input[type=range]{padding:0;height:28px;background:transparent;accent-color:var(
 #combo.hot #comboX{color:#fff;text-shadow:0 0 8px #ff7b00}
 #combo.cpop{animation:cpop .5s ease-out}
 @keyframes cpop{0%{transform:scale(1)}35%{transform:scale(1.35)}100%{transform:scale(1)}}
+#inv.inf{border-color:#c77dff}
+#inv.inf .bar i{background:linear-gradient(90deg,#c77dff,#7bd3ff,#c77dff);background-size:200% 100%;animation:infbar 2s linear infinite}
+@keyframes infbar{to{background-position:200% 0}}
 #btnVeh{width:62px;height:62px;right:84px;bottom:58px;border-color:#f4a300;background:rgba(80,50,0,.75)}
 #btnVeh.exit{right:0;bottom:0;width:70px;height:70px;background:rgba(214,40,40,.8);border-color:#ff9a9a}
 
@@ -1098,7 +1101,7 @@ function updateGroundVisibility(up, limit = 0.86) {
 // =====================================================================
 
 // ---------------- Upgrades ----------------
-const CAP = [{ n: 'Hände', v: 1 }, { n: 'Eimer', v: 6, c: 12 }, { n: 'Mülltüte XXL', v: 15, c: 75 }, { n: 'Schubkarre', v: 35, c: 320 }, { n: 'Container', v: 80, c: 1500 }, { n: 'Müllpresse', v: 200, c: 6500 }, { n: 'Schwarzes Loch', v: 600, c: 32000 }];
+const CAP = [{ n: 'Hände', v: 1 }, { n: 'Eimer', v: 6, c: 12 }, { n: 'Mülltüte XXL', v: 15, c: 75 }, { n: 'Schubkarre', v: 35, c: 320 }, { n: 'Container', v: 80, c: 1500 }, { n: 'Müllpresse', v: 200, c: 6500 }, { n: 'Schwarzes Loch', v: 600, c: 32000 }, { n: 'Bodenloser Korb', v: Infinity, c: 150000 }];
 const BROOM = [{ n: 'Kein Besen', v: 0 }, { n: 'Handfeger', v: 1.5, c: 35 }, { n: 'Straßenbesen', v: 2.5, c: 200 }, { n: 'Kehrmaschine', v: 4, c: 1000 }, { n: 'Saugturbine', v: 6, c: 5500 }, { n: 'Tornado-Sauger', v: 9, c: 26000 }];
 const SPEED = [{ n: 'Barfuß', v: 4.2 }, { n: 'Turnschuhe', v: 5.2, c: 20 }, { n: 'Laufschuhe', v: 6.3, c: 100 }, { n: 'Sprintspikes', v: 7.6, c: 420 }, { n: 'Raketenschuhe', v: 9.2, c: 1600 }, { n: 'Hyperschuhe', v: 11, c: 6000 }, { n: 'Lichtschuhe', v: 13.5, c: 22000 }];
 const REACH = [{ n: 'Arme', v: 2.6 }, { n: 'Greifzange', v: 3.6, c: 45 }, { n: 'Teleskopzange', v: 5, c: 280 }, { n: 'Robo-Arm', v: 6.8, c: 1600 }, { n: 'Traktorstrahl', v: 9.5, c: 9000 }];
@@ -1107,7 +1110,7 @@ const RSPEED = [{ n: 'Standardmotor', v: 1.6 }, { n: 'Sportmotor', v: 2.3, c: 22
 const RCAP = [{ n: 'Mini-Tank', v: 3 }, { n: 'Tank', v: 6, c: 260 }, { n: 'XL-Tank', v: 12, c: 1300 }, { n: 'Mega-Tank', v: 25, c: 5200 }, { n: 'Giga-Tank', v: 50, c: 20000 }];
 const RRANGE = [{ n: 'Kurzstrecke', v: 40 }, { n: 'Funk', v: 65, c: 600 }, { n: 'Funk+', v: 100, c: 3000 }, { n: 'Satellit', v: 160, c: 12000 }, { n: 'Planetenweit', v: 500, c: 50000 }];
 const UPG = {
-  cap: { list: CAP, icon: '🧺', name: 'Behälter', fx: (v) => `${v} Einheiten tragen` },
+  cap: { list: CAP, icon: '🧺', name: 'Behälter', fx: (v) => (isFinite(v) ? `${v} Einheiten tragen` : 'fasst unendlich viel – nie wieder voll') },
   broom: { list: BROOM, icon: '🧹', name: 'Besen', fx: (v) => (v ? `fegt ${fmtD(v, 1)} m Umkreis` : 'noch kein Besen') },
   speed: { list: SPEED, icon: '👟', name: 'Schuhe', fx: (v) => `${fmtD(v * 3.6, 0)} km/h` },
   reach: { list: REACH, icon: '🦾', name: 'Greifweite', fx: (v) => `${fmtD(v, 1)} m` },
@@ -1307,7 +1310,7 @@ function updateRoombas(dt) {
       }
     }
   }
-  if (removedNow.length) { trashDirty = true; netBroadcast({ t: 'rm', ids: removedNow }); }
+  if (removedNow.length) { trashDirty = true; netBroadcastRm(removedNow); }
 }
 const LED_SEEK = new THREE.Color(0x3cff8f), LED_RET = new THREE.Color(0xffa22b);
 function renderRoombas() {
@@ -1740,6 +1743,7 @@ function sfx(k) {
     case 'thud': noiseHit(0.12, 0.25, 300); break;
     case 'error': tone(160, 0.2, 'square', 0.1, -40); break;
     case 'page': tone(660, 0.06, 'triangle', 0.08, 120); break;
+    case 'magnet': tone(120, 1.1, 'sawtooth', 0.12, 900); tone(240, 1.1, 'sine', 0.1, 1500); noiseHit(1.2, 0.25, 800, 'bandpass'); break;
     case 'combo': [659, 880, 1175].forEach((f, i) => tone(f, 0.12, 'square', 0.07, 0, i * 0.05)); break;
     case 'engine': tone(70, 0.6, 'sawtooth', 0.12, 40); noiseHit(0.5, 0.15, 400); break;
     case 'radio': noiseHit(0.12, 0.12, 3000, 'bandpass'); tone(880, 0.06, 'square', 0.05, 0, 0.1); tone(1175, 0.08, 'square', 0.05, 0, 0.17); break;
@@ -1841,7 +1845,7 @@ function finishShred(ids, si) {
   for (const id of ids) { const n = TYPES[W.type[id]].n; if (n === 'Sofa') G.st.sofa++; else if (n === 'Kloschüssel') G.st.klo++; else if (n === 'Kuscheltier') G.st.teddy++; else if (n === 'Kühlschrank') G.st.fridge++; else if (n === 'Bauschutt') G.st.rubble++; }
   coinFly(Math.max(2, Math.min(8, ids.length)));
   const mults = ids.map((id) => G.invMult.get(id) || 1); for (const id of ids) G.invMult.delete(id);
-  if (NET.mode === 'guest') { netSend({ t: 'sh', ids, si, m: mults }); const v = shredValue(ids, mults); floatCoins('+' + fmt(v)); setTimeout(() => sfx('coin'), 350); return; }
+  if (NET.mode === 'guest') { for (let i = 0; i < ids.length; i += 1500) netSend({ t: 'sh', ids: ids.slice(i, i + 1500), si, m: mults.slice(i, i + 1500) }); const v = shredValue(ids, mults); floatCoins('+' + fmt(v)); setTimeout(() => sfx('coin'), 350); return; }
   creditShred(ids, si, 'me', false, mults);
 }
 function shredValue(ids, mults) { let v = 0; ids.forEach((id, k) => { v += TYPES[W.type[id]].v * (mults ? mults[k] || 1 : 1); }); return v * TURBO[G.upg.turbo].v; }
@@ -1880,7 +1884,7 @@ function doBuy(k, p) { // nur Solo/Host
     // Müll unter dem neuen Schredder direkt verwerten
     const n = pos.clone().normalize(), ids = [];
     for (const cc of cellsWithin(n.x, n.y, n.z, 4, [])) for (let i = W.cellStart[cc]; i < W.cellStart[cc + 1]; i++) if (!isRem(i) && pos.distanceTo(_v1.set(W.pos[i * 3], W.pos[i * 3 + 1], W.pos[i * 3 + 2])) < 1.9) { removeFromGround(i); ids.push(i); }
-    if (ids.length) { creditShred(ids, SH.length - 1, null); netBroadcast({ t: 'rm', ids }); trashDirty = true; }
+    if (ids.length) { creditShred(ids, SH.length - 1, null); netBroadcastRm(ids); trashDirty = true; }
   } else if (k === 'roomba') { G.roombaCount++; syncRoombaCount(); }
   else if (k === 'veh') {
     G.veh.owned = true; const pos = p ? new THREE.Vector3(p[0], p[1], p[2]) : PL.pos.clone(); surf(pos);
@@ -1891,6 +1895,7 @@ function doBuy(k, p) { // nur Solo/Host
   else if (k === 'vauto') { G.veh.auto = true; radio('vauto'); }
   else if (k === 'vspd') G.veh.spd++;
   else G.upg[k]++;
+  if (k === 'cap' && G.upg.cap === CAP.length - 1) radio('basket');
   if (k === 'roomba') radio('roomba'); else if (k === 'shredder') radio('mini'); else if (k === 'broom') radio('broom');
   G.coins -= c; if (UPG[k] && (k === 'rrange')) roombaZoneCache.clear();
   if (NET.mode === 'host') netBroadcastState(true);
@@ -1998,6 +2003,7 @@ function loadPeerJS() {
 }
 const myName = () => (localStorage.getItem('pp_name') || '').trim() || 'Putzi';
 function netSend(m) { if (NET.mode === 'guest' && NET.host && NET.host.open) { try { NET.host.send(m); } catch (e) { } } }
+function netBroadcastRm(ids, except) { for (let i = 0; i < ids.length; i += 1500) netBroadcast({ t: 'rm', ids: ids.slice(i, i + 1500) }, except); }
 function netBroadcast(m, except) { if (NET.mode !== 'host') return; for (const [c, info] of NET.conns) if (c !== except && c.open && info.ready) { try { c.send(m); } catch (e) { } } }
 const r2 = (v) => Math.round(v * 100) / 100;
 function netBroadcastState(full) {
@@ -2059,7 +2065,7 @@ function hostOnData(conn, info, m) {
     case 'rm': {
       const ok = [], deny = [];
       for (const id of m.ids || []) { if (typeof id !== 'number' || id < 0 || id >= TOTAL) continue; if (G.loose.has(id)) { G.loose.delete(id); ok.push(id); } else if (!isRem(id)) { removeFromGround(id); ok.push(id); } else deny.push(id); }
-      if (ok.length) { trashDirty = true; netBroadcast({ t: 'rm', ids: ok }, conn); }
+      if (ok.length) { trashDirty = true; netBroadcastRm(ok, conn); }
       if (deny.length) conn.send({ t: 'deny', ids: deny });
       break;
     }
@@ -2195,12 +2201,14 @@ function openMenu() {
     ${guest ? '' : `<button class="btn grn" id="mInvite">👋 ${NET.mode === 'host' ? 'Einladung anzeigen' : 'Freunde einladen'}</button>`}
     <button class="btn sec" id="mAch">🏆 Erfolge (${G.ach.length}/${ACH.length})</button>
     <button class="btn sec" id="mStats">📊 Statistik</button>
+    ${guest ? '' : '<button class="btn sec" id="mCheat">🧪 Cheats</button>'}
     <button class="btn sec" id="mStory">📖 Die Geschichte nochmal</button>
     <button class="btn sec" id="mSet">⚙️ Einstellungen</button>
     ${guest ? '' : '<button class="btn sec" id="mExp">📤 Spielstand exportieren / importieren</button>'}
     <button class="btn sec" id="mQuit">🏠 ${guest ? 'Planet verlassen' : 'Speichern & Hauptmenü'}</button></div>`);
   $('#mResume').onclick = closePanel;
   if (!guest) { $('#mSave').onclick = () => saveGame(true); $('#mInvite').onclick = hostStart; $('#mExp').onclick = openExport; }
+  if (!guest) $('#mCheat').onclick = openCheats;
   $('#mStats').onclick = openStats; $('#mSet').onclick = openSettings; $('#mAch').onclick = openAchievements;
   $('#mStory').onclick = () => { closePanel(); G.running = false; $('#hud').classList.add('hidden'); showStory(() => { G.running = true; $('#hud').classList.remove('hidden'); }); };
   $('#mQuit').onclick = async () => { if (!guest) await saveGame(); leaveToTitle(); };
@@ -2217,13 +2225,52 @@ function openInvite() {
   if ($('#iShare')) $('#iShare').onclick = () => navigator.share({ title: 'Putzplanet', text: `Hilf mir beim Aufräumen meines Planeten! Code: ${NET.code}`, url: link || undefined }).catch(() => { });
   $('#iStop').onclick = async () => { if (await confirmModal('Einladung beenden? Alle Gäste fliegen raus.', 'Beenden')) { stopHosting(); closePanel(); toast('Planet ist wieder privat'); } };
 }
+function openCheats() {
+  showPanel('cheats', 'Cheats', `<div class="small" style="margin-bottom:10px">Psst … nicht Chef Dreckmann verraten.</div>
+    <div class="menuBtns">
+      <button class="btn" id="cCoins">${CI} +5.000 Münzen</button>
+      <button class="btn grn" id="cMagnet">🧲 Supermagnet – saugt ein Viertel des Planeten leer</button>
+    </div>
+    <div class="small" style="margin-top:10px">Der Supermagnet erfasst alles im Umkreis von ${fmt(R * Math.PI / 3)} m um dich (ein Viertel der Planetenoberfläche) und schreddert es sofort – zum vollen Preis inkl. Turbo.</div>`);
+  $('#cCoins').onclick = () => { G.coins += 5000; G.st.cheats = (G.st.cheats || 0) + 1; sfx('buy'); floatCoins('+5.000'); coinFly(8); radio('cheat'); if (NET.mode === 'host') netBroadcastState(true); };
+  $('#cMagnet').onclick = async () => {
+    const ids = magnetTargets();
+    if (!ids.length) { toast('Hier ist schon alles sauber ✨'); return; }
+    if (!await confirmModal(`Supermagnet einschalten? ${fmt(ids.length)} Teile werden eingesaugt und geschreddert.`, 'Saugen!')) return;
+    closePanel(); superMagnet(ids);
+  };
+}
+function magnetTargets() {
+  const up = PL.up, cs = 0.5, csCell = Math.cos(Math.PI / 3 + CELL_ANG), ids = []; // Kugelkappe mit 60° = ein Viertel der Oberfläche
+  for (let c = 0, k = 0; c < CELLS; c++, k += 3) {
+    if (cellDir[k] * up.x + cellDir[k + 1] * up.y + cellDir[k + 2] * up.z < csCell) continue;
+    for (let i = W.cellStart[c]; i < W.cellStart[c + 1]; i++) { if (isRem(i)) continue; const x = W.pos[i * 3], y = W.pos[i * 3 + 1], z = W.pos[i * 3 + 2]; if ((x * up.x + y * up.y + z * up.z) / Math.hypot(x, y, z) >= cs) ids.push(i); }
+  }
+  for (const [id, L] of G.loose) if ((L[0] * up.x + L[1] * up.y + L[2] * up.z) / Math.hypot(L[0], L[1], L[2]) >= cs) ids.push(id);
+  return ids;
+}
+function superMagnet(ids) {
+  if (NET.mode === 'guest') return;
+  const to = PL.pos.clone().addScaledVector(PL.up, 0.7).addScaledVector(PL.f, 1.6);
+  // Die nahen Teile sieht man heranfliegen
+  const near = ids.map((id) => { const L = G.loose.get(id); const p = L ? new THREE.Vector3(L[0], L[1], L[2]) : new THREE.Vector3(W.pos[id * 3], W.pos[id * 3 + 1], W.pos[id * 3 + 2]); return [p.distanceToSquared(PL.pos), id, p]; })
+    .filter((a) => a[0] < 50 * 50).sort((a, b) => a[0] - b[0]).slice(0, 180);
+  near.forEach(([d2, id, p], k) => { const f = { id, t: W.type[id], arc: true, p0: p, p1: to, time: -(Math.sqrt(d2) * 0.02 + k * 0.004), dur: 0.55, si: -1, pos: p.clone(), spin: Math.random() * TAU }; FLY.push(f); });
+  for (const id of ids) { if (G.loose.has(id)) G.loose.delete(id); else removeFromGround(id); G.invMult.delete(id); }
+  trashDirty = natureDirty = true; MM.dirty = true;
+  creditShred(ids, -1, 'me'); netBroadcastRm(ids);
+  G.st.cheats = (G.st.cheats || 0) + 1;
+  spawnBurst(PL.pos.clone().addScaledVector(PL.up, 1), 60, new THREE.Color(0xc77dff), 7, 0, 4);
+  VIEW.shake = 0.8; sfx('magnet'); setTimeout(() => sfx('shred'), 500);
+  toast(`🧲 Supermagnet: ${fmt(ids.length)} Teile eingesaugt!`, 'good'); radio('cheat');
+}
 function openStats() {
   const left = TOTAL - G.shredded;
   showPanel('stats', 'Statistik', `<div class="statGrid">
     <span>Geschreddert</span><b>${fmt(G.shredded)}</b><span>Noch übrig</span><b>${fmt(left)}</b><span>Sauber</span><b>${fmtD(G.shredded / TOTAL * 100, 2)} %</b>
     <span>Münzen gesamt</span><b>${fmt(G.totalCoins)}</b><span>Roombas</span><b>${G.roombaCount}</b><span>Schredder</span><b>${G.shredders.length}</b>
     <span>Aufgehoben</span><b>${fmt(G.st.picked)}</b><span>Wurf-Treffer</span><b>${fmt(G.st.hits)}</b><span>Gelaufen</span><b>${fmtD(G.st.walked / 1000, 2)} km</b>
-    <span>Saubere Flächen</span><b>${fmt(G.st.cells)}</b><span>Erfolge</span><b>${G.ach.length}/${ACH.length}</b>
+    <span>Saubere Flächen</span><b>${fmt(G.st.cells)}</b>${G.st.cheats ? `<span>Cheats benutzt</span><b>${fmt(G.st.cheats)}</b>` : ''}<span>Erfolge</span><b>${G.ach.length}/${ACH.length}</b>
     <span>Spielzeit</span><b>${fmtClock(G.played)}</b><span>Planet</span><b>Blühonia #${W.seed}</b></div>`);
 }
 function openSettings() {
@@ -2260,7 +2307,10 @@ function updateHUD(dt) {
   const u = VEH.driving ? (G.veh.auto ? 0 : VEH.load) : invUnits(), cap = VEH.driving ? (G.veh.auto ? 0 : VCAP) : CAP[G.upg.cap].v;
   if (VEH.driving && G.veh.auto) { if (_hudInv.c !== -2) { _hudInv.c = -2; _hudInv.u = -1; $('#invTxt').textContent = '♻️ Bordschredder'; $('#invBar').style.width = '100%'; } }
   else
-  if (u !== _hudInv.u || cap !== _hudInv.c) { _hudInv.u = u; _hudInv.c = cap; $('#invTxt').textContent = `${u}/${cap}`; $('#invBar').style.width = Math.min(100, u / cap * 100) + '%'; }
+  if (u !== _hudInv.u || cap !== _hudInv.c) {
+    const inf = !isFinite(cap); if (inf !== (_hudInv.inf || false)) { _hudInv.inf = inf; $('#inv span').innerHTML = inf ? ICON.basket : ICON.bucket; $('#inv').classList.toggle('inf', inf); }
+    _hudInv.u = u; _hudInv.c = cap; $('#invTxt').textContent = inf ? `${fmt(u)}/∞` : `${u}/${cap}`; $('#invBar').style.width = inf ? '100%' : Math.min(100, u / cap * 100) + '%';
+  }
   const drv = VEH.driving;
   $('#btnSweep').classList.toggle('hidden', G.upg.broom === 0 || drv);
   $('#btnThrow').classList.toggle('hidden', G.inv.length === 0 || drv);
@@ -2435,7 +2485,7 @@ async function boot() {
     $('#loading').classList.add('hidden'); $('#title').classList.remove('hidden'); await renderTitle();
     const qs = new URLSearchParams(location.search); const jc = qs.get('join') || (location.hash.startsWith('#join-') ? location.hash.slice(6) : '');
     if (jc) { $('#codeIn').value = jc.toUpperCase(); $('#joinMsg').textContent = 'Gib deinen Namen ein und tippe „Beitreten“.'; }
-    window.__PP = { VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
+    window.__PP = { renderShop, magnetTargets, superMagnet, openCheats, CAP, VEH, COMBO, vehEnter, vehExit, ensureVehicle, findRoombaTarget, RRANGE, pickRoomba, placeRoomba, camera, VIEW, ACH, achTick, openAchievements, showStory, startIntro, skipIntro, groundH, WATER, NATURE, genWorld, newGameState, updateGroundGeometry, cellsWithin, isRem, surf, THREE, G, W, PL, SH, RB, NET, TYPES, renderer, startSlot, tryPick, deposit, doBuy, buy, takeItem, rebuildTrash, saveGame, exportSave, importSave, joinGame, hostStart, applySave, makeSave, INPUT };
   } catch (e) { console.error(e); $('#loadTxt').textContent = 'Fehler beim Laden: ' + (e && e.message ? e.message : e); }
 }
 
@@ -2455,6 +2505,7 @@ const ICON = {
   broom: `<svg viewBox="0 0 24 24"><path d="M19.5 2.5l-7.2 8.6" stroke="#a0703c" stroke-width="2.6" stroke-linecap="round"/><path d="M10.4 9.6l4 3.4-1.6 1.9c-1.8 2.2-4.6 5.4-9.8 6.6 1.4-4.9 3.8-8.1 5.8-10z" fill="#ffd23f" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/><path d="M8.6 15.4l-2.4 2.8M11 16.4l-2.2 2.6" stroke="#b8901a" stroke-width="1.2"/></svg>`,
   throw: `<svg viewBox="0 0 24 24"><path d="M4 19c2-8 8-12 15-12" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-dasharray="3 3"/><path d="M15.5 3.5L20 7l-4 3.8" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/><rect x="2.5" y="16.5" width="5" height="5" rx="1" fill="#e63946" stroke="${OUT}" stroke-width="1.5"/></svg>`,
   bucket: `<svg viewBox="0 0 24 24"><path d="M4.5 8h15l-1.8 12a1.8 1.8 0 01-1.8 1.5H8.1a1.8 1.8 0 01-1.8-1.5z" fill="#5ab4ff" stroke="${OUT}" stroke-width="2" stroke-linejoin="round"/><path d="M5 8c0-5 14-5 14 0" fill="none" stroke="${OUT}" stroke-width="1.8"/><path d="M4.5 8h15" stroke="${OUT}" stroke-width="2.2"/></svg>`,
+  basket: `<svg viewBox="0 0 24 24"><path d="M3 10h18l-2.2 10a1.6 1.6 0 01-1.6 1.3H6.8a1.6 1.6 0 01-1.6-1.3z" fill="#c9893a" stroke="${OUT}" stroke-width="1.8" stroke-linejoin="round"/><path d="M5 13.5h14M5.6 17h12.8M9 10.5l.6 10.5M15 10.5l-.6 10.5M12 10.5v10.5" stroke="#8a5a1e" stroke-width="1.2"/><path d="M7 10c0-6 10-6 10 0" fill="none" stroke="${OUT}" stroke-width="1.8"/><path d="M9.5 6.2c1.5 1.4 3.5 1.4 5 0" stroke="#c77dff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`,
   truck: `<svg viewBox="0 0 24 24"><rect x="2" y="8" width="13" height="8" rx="1.5" fill="#f4a300" stroke="${OUT}" stroke-width="1.6"/><path d="M15 10h3.5l3 3.5V16H15z" fill="#f4a300" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/><rect x="16" y="11" width="2.6" height="2.2" fill="#9ad8ff"/><circle cx="6" cy="17.5" r="2.2" fill="#23272b" stroke="${OUT}" stroke-width="1.2"/><circle cx="17.5" cy="17.5" r="2.2" fill="#23272b" stroke="${OUT}" stroke-width="1.2"/><path d="M3 18.5l-1.5 2M5 19.5l-1 2" stroke="#e8c46a" stroke-width="1.4"/><rect x="7" y="5" width="2" height="3" fill="#ff7b00" stroke="${OUT}" stroke-width="1"/></svg>`,
   robot: `<svg viewBox="0 0 24 24"><ellipse cx="12" cy="15" rx="9.5" ry="4.5" fill="#55606e" stroke="${OUT}" stroke-width="1.8"/><ellipse cx="12" cy="12.5" rx="9" ry="4.2" fill="#2b2d42" stroke="${OUT}" stroke-width="1.8"/><ellipse cx="12" cy="11.6" rx="6" ry="2.6" fill="#8d99ae"/><circle cx="16.5" cy="13.5" r="1.3" fill="#3cff8f"/><path d="M12 3v4M9 5l3-2 3 2" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`,
   trophy: `<svg viewBox="0 0 24 24"><path d="M7 3.5h10v4.5a5 5 0 01-10 0z" fill="#ffd23f" stroke="${OUT}" stroke-width="1.8"/><path d="M7 5H4.2c0 3 1.2 4.6 3.3 5M17 5h2.8c0 3-1.2 4.6-3.3 5" fill="none" stroke="${OUT}" stroke-width="1.6"/><path d="M12 13v4M8.5 20.5h7l-.8-3.5H9.3z" fill="#e0a21a" stroke="${OUT}" stroke-width="1.6" stroke-linejoin="round"/></svg>`,
@@ -2582,6 +2633,8 @@ const RADIO = {
   veh: 'Eine Kehrmaschine?! Hast du überhaupt einen Führerschein? … Egal. Bring sie heil zurück.',
   vauto: 'Ein Schredder IN der Kehrmaschine? Ich hätte dich früher befördern sollen. Mach ich aber nicht.',
   combo: 'Combo ×3! Ich hab gehört, du hast einen Lauf. Lauf weiter!',
+  basket: 'Ein Korb ohne Boden? Physik ist offenbar nur ein Vorschlag. Na dann – rein mit allem!',
+  cheat: 'Cheats?! Ich hab nichts gesehen. Und du auch nicht.',
   friend: 'Du hast Freunde mitgebracht? Prima. Die bezahle ich aber nicht.',
 };
 const BOSS_FACE = `<svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="31" fill="#2b1f3a"/><g stroke="${OUT}" stroke-width="2.5" stroke-linejoin="round"><ellipse cx="32" cy="34" rx="17" ry="20" fill="#ff8a7a"/><path d="M19 25l8 3M45 25l-8 3" stroke-width="3"/><circle cx="26" cy="33" r="2.2" fill="${OUT}"/><circle cx="38" cy="33" r="2.2" fill="${OUT}"/><path d="M22 43c4-3 16-3 20 0-3 2-7 1-10 0-3 1-7 2-10 0z" fill="#6b4a2b"/><path d="M14 30a18 18 0 0 1 36 0" fill="none" stroke="#14202b" stroke-width="3.5"/><rect x="10" y="28" width="6" height="11" rx="3" fill="#ffd23f"/><path d="M13 39q2 9 10 9" fill="none"/></g></svg>`;
@@ -2636,6 +2689,7 @@ const ACH = [
   { id: 'vauto', ic: '♻️', n: 'Rollendes Kraftwerk', d: 'Baue den Bordschredder ein', v: () => (G.veh.auto ? 1 : 0), max: 1, r: 0 },
   { id: 'combo3', ic: '🔥', n: 'Im Flow', d: 'Erreiche eine Combo von ×3', v: () => G.st.combo || 1, max: 3, r: 300 },
   { id: 'combo5', ic: '☄️', n: 'Putz-Ekstase', d: 'Erreiche eine Combo von ×5', v: () => G.st.combo || 1, max: 5, r: 2000 },
+  { id: 'basket', ic: '🧺', n: 'Bodenlos', d: 'Kaufe den Bodenlosen Korb', v: () => (G.upg.cap >= CAP.length - 1 ? 1 : 0), max: 1, r: 0 },
   { id: 'friends', ic: '🤝', n: 'Geteiltes Leid', d: 'Putze zusammen mit Freunden', v: () => G.st.friends, max: 1, r: 100 },
 ];
 const achQ = []; let achOn = false;
